@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>이레 노트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/note.css?v=202610060617">
+<link rel="preload" href="assets/note.js?v=202610060617" as="script">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#3E9F7A">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/app-192.png">
+<link rel="apple-touch-icon" href="icons/app-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="이레 노트">
+<meta name="robots" content="noindex, nofollow">
+<style>html.gated body>*:not(#gate){display:none !important}
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F6F8FB;z-index:9999;font-family:'IBM Plex Sans KR',system-ui,sans-serif;padding:16px}
+#gate form{background:#fff;border:1px solid #DDE3EA;border-radius:18px;padding:28px 24px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.06)}
+#gate h2{margin:0 0 6px;font-size:22px;color:#18212E}#gate p{margin:0 0 16px;color:#5B6675;font-size:15px}
+#gate input{width:100%;box-sizing:border-box;font-size:26px;letter-spacing:.3em;text-align:center;padding:10px;border:1.5px solid #C9D2DC;border-radius:12px;margin-bottom:12px}
+#gate button{width:100%;font-size:17px;padding:12px;border:0;border-radius:12px;background:#18212E;color:#fff;cursor:pointer}
+#gate .err{color:#C8392B;min-height:1.4em;margin:10px 0 0;font-size:14px}</style>
+<script>(function () {
+  var K = 'irae-gate', H = '519aa7ff';
+  try { if (localStorage.getItem(K) === H) return; } catch (e) {}
+  function hash(s) { var h = 0x811c9dc5; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); }
+  document.documentElement.classList.add('gated');
+  function show() {
+    var g = document.createElement('div'); g.id = 'gate';
+    g.innerHTML = '<form><h2>이레</h2><p>선생님께 받은 반 코드를 넣어 주세요.</p>' +
+      '<input type="password" inputmode="numeric" autocomplete="off" aria-label="반 코드" maxlength="12"><button type="submit">들어가기</button><p class="err" role="alert"></p></form>';
+    document.body.appendChild(g);
+    var f = g.querySelector('form'), inp = g.querySelector('input'), err = g.querySelector('.err');
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (hash('irae-gate:' + inp.value.trim()) === H) {
+        try { localStorage.setItem(K, H); } catch (x) {}
+        g.remove(); document.documentElement.classList.remove('gated');
+      } else { err.textContent = '코드가 달라요. 다시 넣어 주세요.'; inp.value = ''; inp.focus(); }
+    });
+    inp.focus();
+  }
+  if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
+})();</script>
+<style>
+.bk-open{display:inline-block;margin-top:10px;padding:6px 14px;font:inherit;font-size:13px;color:var(--ink,#18212E);background:transparent;border:1px solid var(--line,#D6DEE8);border-radius:999px;cursor:pointer}
+#irae-bk{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,14,20,.45)}
+#irae-bk[hidden]{display:none}
+#irae-bk .bk-card{background:var(--card,#fff);color:var(--ink,#18212E);border:1px solid var(--line,#D6DEE8);border-radius:18px;padding:22px 20px;width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;text-align:left;font-size:15px}
+#irae-bk h2{margin:0 0 6px;font-size:20px}
+#irae-bk h3{margin:18px 0 6px;font-size:16px}
+#irae-bk p{margin:0 0 10px;color:var(--muted,#5A6576);line-height:1.55}
+#irae-bk .bk-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+#irae-bk button{font:inherit;font-size:15px;padding:10px 14px;border-radius:12px;border:1px solid var(--line,#D6DEE8);background:transparent;color:var(--ink,#18212E);cursor:pointer}
+#irae-bk button.main{background:var(--ink,#18212E);color:var(--btn-ink,#fff);border-color:var(--ink,#18212E)}
+#irae-bk button.warn{background:var(--pen,#D2372A);color:#fff;border-color:var(--pen,#D2372A)}
+#irae-bk textarea{width:100%;box-sizing:border-box;min-height:84px;font:inherit;font-size:13px;padding:10px;border:1px solid var(--line,#D6DEE8);border-radius:10px;background:var(--paper,#F6F8FB);color:var(--ink,#18212E);word-break:break-all}
+#irae-bk .bk-msg{min-height:1.4em;margin:6px 0 0;color:var(--sel,#2B4C8C);font-size:14px}
+#irae-bk .bk-msg.err{color:var(--pen,#D2372A)}
+#irae-bk .bk-close{float:right;border:0;padding:4px 8px;font-size:22px;line-height:1}
+</style>
+<script>(function () {
+  var P = 'irae-', AT = 'irae-backup-at';
+  function collect() {
+    var data = {};
+    try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf(P) === 0) data[k] = localStorage.getItem(k); } } catch (e) {}
+    return data;
+  }
+  function count(data) { var n = 0; for (var k in data) if (k !== AT) n++; return n; }
+  function b64(bytes) { var s = ''; for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
+  function unb64(str) { var s = atob(str), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+  function pipe(bytes, stream) { return new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer().then(function (b) { return new Uint8Array(b); }); }
+  function encode(obj) {
+    var bytes = new TextEncoder().encode(JSON.stringify(obj));
+    if (typeof CompressionStream === 'undefined') return Promise.resolve('IRAE0:' + b64(bytes));
+    return pipe(bytes, new CompressionStream('deflate-raw')).then(function (z) { return 'IRAE1:' + b64(z); }, function () { return 'IRAE0:' + b64(bytes); });
+  }
+  // 붙여 넣은 글(카톡 메시지 전체여도 됨)이나 파일 내용에서 백업을 꺼냄
+  function decode(text) {
+    text = String(text || '').trim();
+    if (text.charAt(0) === '{') return Promise.resolve().then(function () { return JSON.parse(text); });
+    var m = text.replace(/\s+/g, '').match(/IRAE([01]):([A-Za-z0-9+\/=]+)/);
+    if (!m) return Promise.reject(new Error('code'));
+    return Promise.resolve().then(function () {
+      var bytes = unb64(m[2]);
+      if (m[1] === '0') return bytes;
+      if (typeof DecompressionStream === 'undefined') throw new Error('old');
+      return pipe(bytes, new DecompressionStream('deflate-raw'));
+    }).then(function (bytes) { return JSON.parse(new TextDecoder().decode(bytes)); });
+  }
+  function valid(obj) {
+    if (!obj || obj.app !== 'irae' || !obj.data || typeof obj.data !== 'object') return false;
+    for (var k in obj.data) if (k.indexOf(P) !== 0 || typeof obj.data[k] !== 'string') return false;
+    return true;
+  }
+  function when(t) {
+    try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(t)); } catch (e) { return ''; }
+  }
+  function today() { try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()); } catch (e) { return 'backup'; } }
+  function snapshot() {
+    var now = new Date().toISOString();
+    try { localStorage.setItem(AT, now); } catch (e) {}
+    return { app: 'irae', v: 1, at: now, data: collect() };
+  }
+
+  var box, pending = null;
+  function $(s) { return box.querySelector(s); }
+  function msg(id, text, err) { var el = $(id); el.textContent = text; el.className = 'bk-msg' + (err ? ' err' : ''); }
+  function lastText() { var t = null; try { t = localStorage.getItem(AT); } catch (e) {} return t ? '마지막 백업: ' + when(t) : '아직 백업한 적이 없어요.'; }
+  function build() {
+    box = document.createElement('div');
+    box.id = 'irae-bk'; box.hidden = true;
+    box.innerHTML = '<div class="bk-card" role="dialog" aria-modal="true" aria-labelledby="bk-title">' +
+      '<button class="bk-close" type="button" data-bk="close" aria-label="닫기">×</button>' +
+      '<h2 id="bk-title">기록 백업 · 옮기기</h2>' +
+      '<p>푼 기록과 오답노트는 <b>이 휴대폰(브라우저)에만</b> 저장돼요. 휴대폰을 바꾸거나 인터넷 기록을 지우기 전에 백업해 두세요.</p>' +
+      '<p id="bk-last"></p>' +
+      '<h3>1. 백업하기</h3>' +
+      '<p>[백업 코드 복사]를 누르고 카톡 ‘나와의 채팅’에 붙여 넣어 두면 가장 쉬워요.</p>' +
+      '<div class="bk-row"><button class="main" type="button" data-bk="copy">백업 코드 복사</button><button type="button" data-bk="file">파일로 저장</button></div>' +
+      '<textarea id="bk-out" hidden readonly aria-label="백업 코드"></textarea>' +
+      '<p class="bk-msg" id="bk-msg1" role="status"></p>' +
+      '<h3>2. 불러오기 (새 휴대폰에서)</h3>' +
+      '<p>저장해 둔 백업 코드(카톡 메시지 통째로 복사해도 돼요)를 아래 칸에 붙여 넣으세요.</p>' +
+      '<textarea id="bk-in" placeholder="여기에 백업 코드를 붙여 넣으세요" aria-label="백업 코드 붙여 넣기"></textarea>' +
+      '<div class="bk-row"><button class="main" type="button" data-bk="check">불러오기</button><button type="button" data-bk="pick">파일에서 불러오기</button></div>' +
+      '<input type="file" id="bk-file" accept=".json,application/json,text/plain" hidden>' +
+      '<div class="bk-row" id="bk-confirm" hidden><button class="warn" type="button" data-bk="apply">지금 기록을 바꾸기</button><button type="button" data-bk="cancel">그만두기</button></div>' +
+      '<p class="bk-msg" id="bk-msg2" role="status"></p>' +
+      '</div>';
+    document.body.appendChild(box);
+    // 퀴즈 화면의 단축키(숫자 1~5, Enter)와 클릭 처리에 걸리지 않게 여기서 멈춤
+    ['keydown', 'keyup', 'input', 'submit'].forEach(function (t) { box.addEventListener(t, function (e) { e.stopPropagation(); if (t === 'keydown' && e.key === 'Escape') close(); }); });
+    box.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (e.target === box) return close();
+      var b = e.target.closest('[data-bk]');
+      if (b) act(b.dataset.bk);
+    });
+    $('#bk-file').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () { check(String(r.result)); };
+      r.onerror = function () { msg('#bk-msg2', '파일을 읽지 못했어요.', true); };
+      r.readAsText(f);
+      this.value = '';
+    });
+  }
+  function open() {
+    if (!box) build();
+    pending = null; $('#bk-confirm').hidden = true; $('#bk-out').hidden = true;
+    msg('#bk-msg1', ''); msg('#bk-msg2', '');
+    $('#bk-last').textContent = lastText();
+    box.hidden = false;
+    $('[data-bk="copy"]').focus({ preventScroll: true });
+  }
+  function close() { if (box) box.hidden = true; }
+  function act(a) {
+    if (a === 'close') return close();
+    if (a === 'copy') {
+      var snap = snapshot();
+      encode(snap).then(function (code) {
+        var text = '이레 기록 백업 (' + when(snap.at) + ', 기록 ' + count(snap.data) + '개)\n' + code;
+        var out = $('#bk-out');
+        var fallback = function () { out.hidden = false; out.value = text; out.focus(); out.select(); msg('#bk-msg1', '아래 글을 길게 눌러 모두 복사한 뒤 카톡 ‘나와의 채팅’에 붙여 넣어 주세요.'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { msg('#bk-msg1', '복사했어요. 카톡 ‘나와의 채팅’에 붙여 넣어 보관하세요.'); }, fallback);
+        else fallback();
+        $('#bk-last').textContent = lastText();
+      });
+      return;
+    }
+    if (a === 'file') {
+      var snap2 = snapshot(), name = '이레기록-' + today() + '.json';
+      var blob = new Blob([JSON.stringify(snap2)], { type: 'application/json' });
+      var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      var file = typeof File !== 'undefined' ? new File([blob], name, { type: 'application/json' }) : null;
+      $('#bk-last').textContent = lastText();
+      // 휴대폰은 다운로드가 잘 안 되는 경우가 많아 공유하기(파일 앱·카톡·드라이브에 저장)로
+      if (mobile && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: name }).then(function () { msg('#bk-msg1', '저장했어요.'); }, function () {});
+        return;
+      }
+      var url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = name; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      msg('#bk-msg1', '‘' + name + '’ 파일로 저장했어요. (다운로드 폴더)');
+      return;
+    }
+    if (a === 'check') return check($('#bk-in').value);
+    if (a === 'pick') return $('#bk-file').click();
+    if (a === 'cancel') { pending = null; $('#bk-confirm').hidden = true; msg('#bk-msg2', ''); return; }
+    if (a === 'apply' && pending) {
+      try { for (var k in pending.data) if (k !== AT) localStorage.setItem(k, pending.data[k]); }
+      catch (e) { msg('#bk-msg2', '저장하지 못했어요. 시크릿 모드가 아닌지 확인해 주세요.', true); return; }
+      $('#bk-confirm').hidden = true;
+      msg('#bk-msg2', '기록을 불러왔어요. 화면을 새로 열어요…');
+      setTimeout(function () { location.reload(); }, 900);
+    }
+  }
+  function check(text) {
+    pending = null; $('#bk-confirm').hidden = true;
+    if (!String(text || '').trim()) { msg('#bk-msg2', '백업 코드를 먼저 붙여 넣어 주세요.', true); return; }
+    decode(text).then(function (obj) {
+      if (!valid(obj)) throw new Error('code');
+      pending = obj;
+      $('#bk-confirm').hidden = false;
+      msg('#bk-msg2', when(obj.at) + '에 만든 백업이에요 (기록 ' + count(obj.data) + '개). 불러오면 이 휴대폰의 같은 기록이 백업 내용으로 바뀌어요.');
+    }).catch(function (e) {
+      msg('#bk-msg2', e && e.message === 'old' ? '이 브라우저가 오래돼서 이 코드를 읽지 못해요. 크롬이나 사파리를 최신으로 바꿔 주세요.' : '백업 코드가 아니거나 일부가 빠졌어요. 처음부터 끝까지 모두 복사했는지 확인해 주세요.', true);
+    });
+  }
+  window.IRAE_BACKUP = { open: open, collect: collect, encode: encode, decode: decode };
+
+  // 페이지 아래(footer)에 버튼 붙이기. 퀴즈 화면은 footer를 나중에 그려서, 생길 때까지 지켜봄
+  function attach() {
+    var f = document.querySelector('footer');
+    if (!f || f.querySelector('.bk-open')) return !!f;
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'bk-open'; b.textContent = '기록 백업 · 옮기기';
+    b.addEventListener('click', function (e) { e.stopPropagation(); open(); });
+    f.appendChild(document.createElement('br')); f.appendChild(b);
+    return true;
+  }
+  function watch() {
+    if (attach()) return;
+    var mo = new MutationObserver(function () { if (attach()) mo.disconnect(); });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
+})();</script>
+</head>
+<body>
+<div id="app"></div>
+<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610060617","alwaysSheets":true};</script>
+<script>
+// 학습지 목록은 선생님이 자주 바꾸므로 열 때마다 새로 받음 (?t=지금 시각)
+(function () {
+  var s = document.createElement('script');
+  s.src = 'sheets.js?t=' + Date.now();
+  s.onload = s.onerror = function () {
+    var app = document.createElement('script');
+    app.src = 'assets/note.js?v=202610060617';
+    document.body.appendChild(app);
+  };
+  document.body.appendChild(s);
+})();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+</script>
+</body>
+</html>

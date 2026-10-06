@@ -1,0 +1,2 @@
+pdf.js 3.11.174 — Mozilla Foundation, Apache License 2.0 (https://github.com/mozilla/pdf.js)
+pdf-lib 1.17.1 — Andrew Dillon, MIT License (https://github.com/Hopding/pdf-lib)

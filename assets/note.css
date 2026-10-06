@@ -1,0 +1,114 @@
+/* 이레 노트: PDF 위에 쓰고 그리기 */
+:root{
+  --paper:#F6F8FB; --card:#FFFFFF; --ink:#18212E; --muted:#5A6576;
+  --line:#D6DEE8; --pen:#D2372A; --sel:#2B4C8C; --sel-soft:#E8EDF7;
+  --btn-ink:#FFFFFF; --desk:#E3E8EF; --bar:#FFFFFF; --ok:#1E7A4C;
+  --body:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#10151D; --card:#161D27; --ink:#E4EAF2; --muted:#98A4B5;
+    --line:#2A3441; --pen:#FF6B5D; --sel:#93B2F0; --sel-soft:#1C283C;
+    --btn-ink:#10151D; --desk:#0B0F15; --bar:#161D27; --ok:#5BC08A; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10151D; --card:#161D27; --ink:#E4EAF2; --muted:#98A4B5;
+  --line:#2A3441; --pen:#FF6B5D; --sel:#93B2F0; --sel-soft:#1C283C;
+  --btn-ink:#10151D; --desk:#0B0F15; --bar:#161D27; --ok:#5BC08A; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0; height:100%}
+body{background:var(--paper); color:var(--ink); font-family:var(--body); -webkit-text-size-adjust:100%}
+button{font:inherit; color:inherit}
+
+/* ── 첫 화면 (목록) ── */
+.home{max-width:760px; margin:0 auto; padding:28px 16px 40px}
+.home header h1{margin:0; font-size:30px; letter-spacing:-.01em}
+.home .lead{margin:6px 0 0; color:var(--muted); line-height:1.55}
+.home h2{font-size:18px; margin:28px 0 10px; display:flex; align-items:center; justify-content:space-between; gap:12px}
+.list{display:grid; gap:10px}
+.item{display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px}
+.item .main{flex:1; min-width:0; text-align:left; background:none; border:0; padding:0; cursor:pointer}
+.item .name{display:block; font-weight:600; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.item .sub{display:block; margin-top:3px; font-size:13px; color:var(--muted); line-height:1.5}
+.item .state{font-size:12px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted); white-space:nowrap}
+.item .state.sent{color:var(--ok); border-color:var(--ok)}
+.item .state.doing{color:var(--sel); border-color:var(--sel)}
+.item .del{background:none; border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:13px; color:var(--muted); cursor:pointer; white-space:nowrap}
+.item .del.armed{color:#fff; background:var(--pen); border-color:var(--pen)}
+.empty{color:var(--muted); font-size:14px; margin:0; padding:14px 16px; border:1px dashed var(--line); border-radius:14px; line-height:1.55}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 16px; border-radius:12px; border:1px solid var(--ink); background:var(--ink); color:var(--btn-ink); font-size:15px; font-weight:600; cursor:pointer; white-space:nowrap}
+.btn.ghost{background:transparent; color:var(--ink); border-color:var(--line)}
+.btn:disabled{opacity:.45; cursor:default}
+.home footer{margin-top:36px; font-size:13px; color:var(--muted); text-align:center; line-height:1.6}
+.home footer .ver{font-size:11px; opacity:.7}
+
+/* ── 보기 화면 ── */
+.viewer{position:fixed; inset:0; display:flex; flex-direction:column; background:var(--desk); z-index:10}
+.viewer[hidden]{display:none}
+.bar{background:var(--bar); border-bottom:1px solid var(--line); padding:6px 8px calc(6px) 8px; padding-top:max(6px, env(safe-area-inset-top)); flex:none}
+.bar-row{display:flex; align-items:center; gap:8px; min-height:36px}
+.doc-title{flex:1; min-width:0; font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.bar-actions{display:flex; gap:6px; flex:none}
+.presenting .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
+.pageno{font-size:13px; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums}
+.tools{display:flex; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; padding:4px 0 2px; -webkit-overflow-scrolling:touch}
+.tools::-webkit-scrollbar{display:none}
+.sep{width:1px; height:26px; background:var(--line); margin:0 4px; flex:none}
+.tb{flex:none; display:inline-flex; align-items:center; gap:5px; height:38px; min-width:38px; padding:0 9px; border-radius:10px; border:1px solid transparent; background:transparent; cursor:pointer; font-size:13.5px; white-space:nowrap; touch-action:manipulation}
+.tb svg{width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.tb[aria-pressed="true"]{background:var(--sel-soft); border-color:var(--sel)}
+.tb:disabled{opacity:.35; cursor:default}
+.tb.primary{background:var(--ink); color:var(--btn-ink)}
+.dot{width:20px; height:20px; border-radius:50%; border:2px solid var(--card); box-shadow:0 0 0 1px var(--line)}
+.dot.hl{border-radius:5px; opacity:.75}
+.size-line{display:block; width:20px; border-radius:4px; background:currentColor}
+
+.doc{flex:1; overflow:auto; touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; position:relative; overscroll-behavior:contain}
+.pages{width:max-content; min-width:100%; padding:16px 12px 40px}
+.page{position:relative; margin:0 auto; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.18), 0 6px 18px rgba(0,0,0,.08)}
+.page canvas{position:absolute; left:0; top:0; width:100%; height:100%; display:block}
+.page .pnum{position:absolute; right:0; bottom:-20px; font-size:11px; color:var(--muted)}
+.page.loading::after{content:''; position:absolute; inset:0; background:repeating-linear-gradient(-45deg, #f4f6f9 0 12px, #fff 12px 24px)}
+
+.toast{position:fixed; left:50%; bottom:calc(22px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:var(--ink); color:var(--btn-ink); padding:10px 16px; border-radius:12px; font-size:14px; z-index:60; max-width:calc(100% - 32px); text-align:center; box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.toast[hidden]{display:none}
+
+/* 쪽 목록 */
+.thumbs{position:absolute; inset:0; background:var(--desk); overflow:auto; z-index:5; padding:16px}
+.thumbs[hidden]{display:none}
+.thumbs-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:16px; max-width:1100px; margin:0 auto}
+.thumb{background:none; border:0; padding:0; cursor:pointer; text-align:center; font-size:12px; color:var(--muted)}
+.thumb .tp{position:relative; display:block; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); margin-bottom:6px}
+.thumb .tp canvas{position:absolute; inset:0; width:100%; height:100%}
+.thumb.cur .tp{outline:3px solid var(--sel); outline-offset:2px}
+.thumb .has-ink{color:var(--sel); font-weight:600}
+
+/* 창(보내기·이름) */
+.modal{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(10,14,20,.45)}
+.modal[hidden]{display:none}
+.modal .card{background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:18px; padding:22px 20px; width:100%; max-width:420px; max-height:calc(100vh - 32px); overflow:auto}
+.modal h2{margin:0 0 8px; font-size:20px}
+.modal p{margin:0 0 10px; color:var(--muted); line-height:1.55; font-size:15px}
+.modal ol{margin:0 0 12px; padding-left:20px; color:var(--muted); line-height:1.6; font-size:14px}
+.modal ol b{color:var(--ink)}
+.modal label{display:block; font-size:14px; margin:6px 0 4px}
+.modal input{width:100%; font:inherit; font-size:17px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--paper); color:var(--ink)}
+.modal .row{display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:14px}
+.modal .msg{min-height:1.4em; margin:10px 0 0; font-size:14px; color:var(--sel)}
+.modal .msg.err{color:var(--pen)}
+
+/* 수업 화면: 한 쪽씩 화면에 꽉 차게, 도구는 아래에 작게 */
+.viewer.present .bar{display:none}
+.viewer.present .pages{padding:12px}
+.viewer.present .page .pnum{display:none}
+.pbar{position:absolute; left:50%; bottom:calc(14px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:none; align-items:center; gap:4px; background:var(--bar); border:1px solid var(--line); border-radius:16px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.22); z-index:6; max-width:calc(100% - 16px); overflow-x:auto}
+.viewer.present .pbar{display:flex}
+.pbar .pageno{padding:0 6px}
+
+@media (max-width:520px){
+  .tb .lbl{display:none}
+  .home{padding-top:20px}
+}
