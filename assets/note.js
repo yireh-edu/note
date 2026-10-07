@@ -77,6 +77,7 @@
     minus: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M8 11h6M16 16l4 4"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M8 11h6M11 8v6M16 16l4 4"/></svg>',
     fit: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+    full: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 9H6.5v1.5M16 9h1.5v1.5M8 15H6.5v-1.5M16 15h1.5v-1.5"/></svg>',
     grid: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="7" rx="1"/><rect x="14" y="4" width="6" height="7" rx="1"/><rect x="4" y="14" width="6" height="7" rx="1"/><rect x="14" y="14" width="6" height="7" rx="1"/></svg>',
     board: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/></svg>',
     send: '<svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/></svg>',
@@ -764,6 +765,7 @@
       <button class="tb" type="button" data-a="zoom-out" aria-label="축소">${I.minus}</button>
       <button class="tb" type="button" data-a="fit" aria-label="폭 맞춤">${I.fit}</button>
       <button class="tb" type="button" data-a="zoom-in" aria-label="확대">${I.plus}</button>
+      ${FS_OK ? `<button class="tb" type="button" data-a="fullscreen" aria-pressed="${!!fsElement()}">${I.full}<span class="lbl">전체 화면</span></button>` : ''}
       <span class="sep"></span>
       <button class="tb" type="button" data-a="thumbs">${I.grid}<span class="lbl">쪽 목록</span></button>
       <button class="tb" type="button" data-a="clear-page">${I.trash}<span class="lbl">이 쪽 지우기</span></button>`;
@@ -809,6 +811,7 @@
         if (!(S.ink[S.cur] || []).length) { toast('이 쪽에는 지울 필기가 없어요.'); break; }
         if (!clearArmed) { clearArmed = true; toast(`한 번 더 누르면 ${S.cur + 1}쪽 필기를 모두 지워요. (되돌리기로 살릴 수 있어요)`, 3000); break; }
         clearArmed = false; clearPage(S.cur); toast(`${S.cur + 1}쪽 필기를 지웠어요.`); break;
+      case 'fullscreen': fsElement() ? exitFullscreen() : enterFullscreen(); break;
       case 'present': enterPresent(); break;
       case 'exit-present': exitPresent(); break;
       case 'prev': goPage(S.cur - 1); break;
@@ -828,12 +831,36 @@
     else if (e.key === 'PageUp') { e.preventDefault(); goPage(S.cur - 1, true); }
   });
 
+  // ════════════════ 전체 화면 ════════════════
+  // 시계·배터리 줄까지 가리기. 아이패드 사파리·갤럭시탭 크롬·PC는 되고, 아이폰은 기기가 허용하지 않음 → 버튼을 아예 안 보여 줌
+  const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function enterFullscreen() {
+    const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!fn) return;
+    try { const p = fn.call(el); p && p.catch && p.catch(() => {}); } catch (e) {}
+  }
+  function exitFullscreen() {
+    if (!fsElement()) return;
+    const fn = document.exitFullscreen || document.webkitExitFullscreen;
+    try { const p = fn.call(document); p && p.catch && p.catch(() => {}); } catch (e) {}
+  }
+  function onFullscreenChange() {
+    viewer.querySelectorAll('[data-a="fullscreen"]').forEach(b => b.setAttribute('aria-pressed', String(!!fsElement())));
+    // 수업 화면이 켠 전체 화면을 기기 쪽(스와이프·Esc)에서 끄면 수업 화면도 끝냄
+    if (!fsElement() && S.present && S.fsByPresent) { S.fsByPresent = false; exitPresent(); return; }
+    if (S.view === 'doc') scheduleLayout();
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
   // ════════════════ 수업 화면 ════════════════
   function enterPresent() {
     S.present = true; S.zoomBefore = S.zoom; S.zoom = 1;
     viewer.classList.add('present'); document.body.classList.add('presenting');
-    const fs = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
-    if (fs) try { const p = fs.call(viewer); p && p.catch && p.catch(() => {}); } catch (e) {}
+    // 이미 전체 화면이면 그대로, 아니면 수업 화면이 켜고 끝날 때 함께 끔
+    S.fsByPresent = FS_OK && !fsElement();
+    if (S.fsByPresent) enterFullscreen();
     layout(); goPage(S.cur);
     toast('수업 화면이에요. ◀ ▶ 버튼이나 키보드 화살표로 쪽을 넘겨요.', 2600);
   }
@@ -841,11 +868,9 @@
     if (!S.present) return;
     S.present = false; S.zoom = S.zoomBefore || 1;
     viewer.classList.remove('present'); document.body.classList.remove('presenting');
-    const fe = document.fullscreenElement || document.webkitFullscreenElement;
-    if (fe) { const x = document.exitFullscreen || document.webkitExitFullscreen; try { const p = x.call(document); p && p.catch && p.catch(() => {}); } catch (e) {} }
+    if (S.fsByPresent) { S.fsByPresent = false; exitFullscreen(); }
     layout(); goPage(S.cur);
   }
-  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && S.present) exitPresent(); else if (S.present) scheduleLayout(); });
 
   // ════════════════ 쪽 목록 ════════════════
   let thumbObs = null;
