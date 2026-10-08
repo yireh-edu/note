@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/note.css?v=202610070222">
-<link rel="preload" href="assets/note.js?v=202610070222" as="script">
+<link rel="stylesheet" href="assets/note.css?v=202610080521">
+<link rel="preload" href="assets/note.js?v=202610080521" as="script">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#3E9F7A">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/app-192.png">
@@ -238,7 +238,7 @@
 </head>
 <body>
 <div id="app"></div>
-<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610070222","alwaysSheets":true};</script>
+<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610080521","alwaysSheets":true};</script>
 <script>
 // 학습지 목록은 선생님이 자주 바꾸므로 열 때마다 새로 받음 (?t=지금 시각)
 (function () {
@@ -246,7 +246,7 @@
   s.src = 'sheets.js?t=' + Date.now();
   s.onload = s.onerror = function () {
     var app = document.createElement('script');
-    app.src = 'assets/note.js?v=202610070222';
+    app.src = 'assets/note.js?v=202610080521';
     document.body.appendChild(app);
   };
   document.body.appendChild(s);

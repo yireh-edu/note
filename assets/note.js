@@ -1,10 +1,11 @@
 /*
  * 이레 노트 — PDF를 바탕에 깔고 그 위에 펜·형광펜으로 쓰고 그리기
- * - PDF는 pdf.js(assets/vendor)로 그리고, 필기는 쪽마다 선(획) 목록으로 이 기기(IndexedDB)에 저장
- *   선의 좌표는 PDF 크기 기준(확대해도 그대로)이라 확대·축소해도 선명하고, PDF로 내보낼 때도 그대로 옮겨짐
+ * - PDF는 pdf.js(assets/vendor)로 그리고, 필기는 쪽마다 항목(선·글자·가림막) 목록으로 이 기기(IndexedDB)에 저장
+ *   좌표는 PDF 크기 기준(확대해도 그대로)이라 확대·축소해도 선명하고, PDF로 내보낼 때도 그대로 옮겨짐
  * - 손가락: 펜(애플펜슬·S펜)을 한 번이라도 쓰면 손가락은 화면 옮기기만 함(손바닥 무시). 두 손가락은 언제나 확대·이동
  * - 선생님 학습지: sheets.js(선생님이 고치는 파일)의 목록 → 학생이 열어 쓰고 [선생님께 보내기]로 필기한 PDF를 카톡에 보냄
- * - 수업 화면: 한 쪽씩 화면 가득, 도구는 아래 작은 막대
+ * - 수업 화면: 한 쪽씩 화면 가득, 도구는 아래 작은 막대. 레이저 포인터·가림막·타이머·빈 쪽 넣기
+ * - 학생 PDF 채점: 받은 PDF를 열어 빨간 펜·도장(○ ✓ ✗)으로 채점하고 돌려보냄
  */
 (function () {
   'use strict';
@@ -14,13 +15,14 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const DPR = () => Math.min(window.devicePixelRatio || 1, 3);
   const MAX_PX = 5e6;   // 캔버스 한 장의 최대 픽셀 (아이패드 메모리 한도 안쪽)
+  const r2 = v => Math.round(v * 100) / 100;
 
   // ── 저장 ──
   const ls = {
     get(k, f) { try { const v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
-  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen' };
+  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav' };
   // 문서 정보(meta), PDF 원본(pdf), 필기(ink)를 따로 둬서 목록을 볼 때 큰 PDF를 읽지 않음
   const DB = (() => {
     let opening;
@@ -54,17 +56,29 @@
   ];
   const SIZES = { pen: [1.1, 2, 3.4], hl: [9, 14, 20] };   // PDF 단위(pt)
   const SIZE_NAMES = ['가늘게', '보통', '굵게'];
+  const TEXT_SIZES = [12, 18, 28];
+  const STAMP_R = [9, 14, 20], STAMP_W = [1.6, 2.4, 3.2], STAMP_C = '#D2372A';
+  const STAMPS = { o: '동그라미', v: '체크', x: '가위표' };
   const HL_ALPHA = 0.38;
+  const FONT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+  const TOOLS = ['draw', 'erase', 'laser', 'cover', 'text', 'lasso'];
   const set0 = ls.get(K.set, {});
+  const FAV0 = [{ pen: 0, size: 1 }, { pen: 1, size: 0 }, { pen: 3, size: 1 }];
+  const favOk = f => f && PENS[f.pen] && [0, 1, 2].includes(f.size);
+  const FAV = (a => Array.isArray(a) && a.length === 3 && a.every(favOk) ? a : FAV0.map(f => Object.assign({}, f)))(ls.get(K.fav, null));
   const S = {
-    tool: set0.tool === 'erase' ? 'erase' : 'draw', pen: Number.isInteger(set0.pen) && PENS[set0.pen] ? set0.pen : 0, size: [0, 1, 2].includes(set0.size) ? set0.size : 1,
+    tool: TOOLS.includes(set0.tool) ? set0.tool : 'draw', pen: Number.isInteger(set0.pen) && PENS[set0.pen] ? set0.pen : 0, size: [0, 1, 2].includes(set0.size) ? set0.size : 1,
     finger: set0.finger || 'auto',   // auto(펜을 쓰면 이동) | draw | pan
+    eraseMode: set0.eraseMode === 'part' ? 'part' : 'stroke',   // 선 통째로 | 문지른 부분만
+    snap: set0.snap !== false,       // 긋고 멈추면 반듯한 도형으로
+    stamp: 'o',
     penSeen: !!ls.get(K.pen, false),
-    meta: null, pdf: null, pages: [], ink: {}, hist: [], redo: [],
+    meta: null, pdf: null, pages: [], hist: [], redo: [],
     zoom: 1, scale: 1, cur: 0, present: false, view: 'home',
   };
-  const saveSettings = () => ls.set(K.set, { tool: S.tool, pen: S.pen, size: S.size, finger: S.finger });
+  const saveSettings = () => ls.set(K.set, { tool: S.tool === 'stamp' ? 'draw' : S.tool, pen: S.pen, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap });
   const fingerDraws = () => S.finger === 'draw' || (S.finger === 'auto' && !S.penSeen);
+  const isGrade = () => !!(S.meta && S.meta.kind === 'grade');
 
   // ── 아이콘 ──
   const I = {
@@ -86,11 +100,31 @@
     prev: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
     next: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
     close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    laser: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/></svg>',
+    cover: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 18l7-12M13 18l6-10M3.5 14l5-8"/></svg>',
+    text: '<svg viewBox="0 0 24 24"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></svg>',
+    lasso: '<svg viewBox="0 0 24 24"><path stroke-dasharray="3 2.4" d="M8 16c-3.4-1-5-3.4-4-6.2C5.6 5.6 12 4 16.6 5.6S21.6 12 17.4 14.4c-2.6 1.6-6 1.8-8.6 1.4"/><path d="M8.8 15.8c-1 1.6-.8 3 .6 4.4"/></svg>',
+    timer: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 2M9.5 2.5h5M12 2.5V6"/></svg>',
+    more: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/></svg>',
+    pageAdd: '<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M12 10v7M8.5 13.5h7"/></svg>',
   };
 
   // ── 날짜·버전 ──
   const fmtDate = t => { try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(t)); } catch (e) { return ''; } };
-  const dueText = d => { if (!d) return ''; const [y, m, dd] = d.split('-').map(Number); return `${m}월 ${dd}일까지`; };
+  // 마감일: 오늘·내일·며칠 남음·기한 지남 (한국 날짜 기준)
+  function dueInfo(d, sent) {
+    if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    const [, m, dd] = d.split('-').map(Number), md = `${m}월 ${dd}일`;
+    if (sent) return { t: `${md}까지`, c: '' };
+    let today;
+    try { today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } catch (e) { return { t: `${md}까지`, c: '' }; }
+    const diff = Math.round((Date.parse(d) - Date.parse(today)) / 864e5);
+    if (diff < 0) return { t: `기한 지남 · ${md}까지였어요`, c: 'late' };
+    if (diff === 0) return { t: '오늘까지', c: 'late' };
+    if (diff === 1) return { t: '내일까지', c: 'soon' };
+    if (diff <= 6) return { t: `${diff}일 남음 · ${md}까지`, c: 'soon' };
+    return { t: `${md}까지`, c: '' };
+  }
   const VER_TAG = (() => {
     const m = ((document.currentScript && document.currentScript.src) || '').match(/[?&]v=(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/);
     if (!m) return '';
@@ -112,19 +146,35 @@
         </div>
         <div class="tools" id="tools" role="toolbar" aria-label="필기 도구"></div>
       </div>
-      <div class="doc" id="doc"><div class="pages" id="pages"></div></div>
+      <div class="docwrap">
+        <div class="doc" id="doc"><div class="pages" id="pages"></div></div>
+        <div class="timer" id="timer" hidden><button type="button" class="tt" data-a="timer-toggle" aria-label="타이머 멈춤·계속"></button><button type="button" class="tx" data-a="timer-close" aria-label="타이머 끄기">${I.close}</button></div>
+        <div class="selbar" id="selbar" hidden><span id="sel-n"></span><button class="tb" type="button" data-a="sel-dup">복제</button><button class="tb" type="button" data-a="sel-del">${I.trash}<span class="lbl">지우기</span></button><button class="tb" type="button" data-a="sel-done">선택 끝</button></div>
+      </div>
       <div class="thumbs" id="thumbs" hidden><div class="thumbs-grid" id="thumbs-grid"></div></div>
       <div class="pbar" id="pbar" role="toolbar" aria-label="수업 화면 도구"></div>
+      <canvas class="fx" id="fx" aria-hidden="true"></canvas>
     </div>
     <div class="modal" id="modal" hidden><div class="card" role="dialog" aria-modal="true" id="modal-card"></div></div>
     <div class="toast" id="toast" role="status" hidden></div>
-    <input type="file" id="file-in" accept="application/pdf,.pdf" hidden>`;
+    <input type="file" id="file-in" accept="application/pdf,.pdf" hidden>
+    <input type="file" id="bk-in" accept=".json,application/json" hidden>`;
   const home = $('#home'), viewer = $('#viewer'), docEl = $('#doc'), pagesEl = $('#pages');
   let toastTimer;
   function toast(text, ms = 2600) {
     const t = $('#toast'); t.textContent = text; t.hidden = false;
     clearTimeout(toastTimer); if (ms) toastTimer = setTimeout(() => { t.hidden = true; }, ms);
   }
+
+  // ── 창(모달): 내용과 버튼 처리 함수를 함께 넘김 ──
+  let modalFn = null;
+  function showModal(html, fn) { $('#modal-card').innerHTML = html; $('#modal').hidden = false; modalFn = fn || null; }
+  function closeModal() { $('#modal').hidden = true; modalFn = null; }
+  $('#modal').addEventListener('click', e => {
+    const b = e.target.closest('[data-m]');
+    if (e.target.id === 'modal' || (b && b.dataset.m === 'close')) { closeModal(); return; }
+    if (b && modalFn) modalFn(b, e);
+  });
 
   // ── 라이브러리 불러오기 (처음 PDF를 열 때만) ──
   const scripts = {};
@@ -142,21 +192,29 @@
   }
 
   // ════════════════ 첫 화면 ════════════════
-  let delArmed = null;
+  let delArmed = null, pickKind = 'file';
   async function renderHome() {
     S.view = 'home';
     const metas = (await DB.all('meta').catch(() => [])).sort((a, b) => (b.opened || 0) - (a.opened || 0));
     const byId = new Map(metas.map(m => [m.id, m]));
     const sheetRows = SHEETS.map(s => {
       const m = byId.get('sheet:' + s.id);
-      const state = m && m.sentAt ? `<span class="state sent">보냄 ${fmtDate(m.sentAt)}</span>` : m && m.inkCount ? '<span class="state doing">쓰는 중</span>' : '';
+      const sent = !!(m && m.sentAt);
+      const state = sent ? `<span class="state sent">보냄 ${fmtDate(m.sentAt)}</span>` : m && m.inkCount ? '<span class="state doing">쓰는 중</span>' : '';
+      const due = dueInfo(s.due, sent);
+      const sub = [due ? `<span class="due ${due.c}">${esc(due.t)}</span>` : '', s.note ? esc(s.note) : ''].filter(Boolean).join(' · ') || '눌러서 열기';
       return `<div class="item"><button class="main" type="button" data-sheet="${esc(s.id)}"><span class="name">${esc(s.title || s.id)}</span>
-        <span class="sub">${[dueText(s.due), s.note].filter(Boolean).map(esc).join(' · ') || '눌러서 열기'}</span></button>${state}</div>`;
+        <span class="sub">${sub}</span></button>${state}</div>`;
     }).join('');
-    const mine = metas.filter(m => m.kind === 'file');
-    const fileRows = mine.map(m => `<div class="item"><button class="main" type="button" data-open="${esc(m.id)}"><span class="name">${esc(m.name)}</span>
-      <span class="sub">${m.pages ? m.pages + '쪽 · ' : ''}${m.inkCount ? '필기 있음 · ' : ''}${fmtDate(m.opened || m.added)}</span></button>
-      <button class="del${delArmed === m.id ? ' armed' : ''}" type="button" data-del="${esc(m.id)}">${delArmed === m.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`).join('');
+    const row = m => {
+      const gone = m.noPdf ? '<span class="due late">PDF 파일 없음 · 같은 PDF를 다시 열면 필기가 이어져요</span> · ' : '';
+      const state = m.kind === 'grade' && m.sentAt ? `<span class="state sent">돌려줌 ${fmtDate(m.sentAt)}</span>` : '';
+      return `<div class="item"><button class="main" type="button" data-open="${esc(m.id)}"><span class="name">${esc(m.name)}</span>
+      <span class="sub">${gone}${m.pages ? m.pages + '쪽 · ' : ''}${m.inkCount ? '필기 있음 · ' : ''}${fmtDate(m.opened || m.added)}</span></button>${state}
+      <button class="del${delArmed === m.id ? ' armed' : ''}" type="button" data-del="${esc(m.id)}">${delArmed === m.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`;
+    };
+    const fileRows = metas.filter(m => m.kind === 'file').map(row).join('');
+    const gradeRows = metas.filter(m => m.kind === 'grade').map(row).join('');
     home.innerHTML = `
       <header>
         <h1>${esc(CFG.title || '이레 노트')}</h1>
@@ -165,12 +223,23 @@
       ${SHEETS.length || CFG.alwaysSheets ? `<h2>선생님 학습지</h2><div class="list">${sheetRows || '<p class="empty">아직 올라온 학습지가 없어요.</p>'}</div>` : ''}
       <h2>내 PDF <button class="btn" type="button" data-a="pick">PDF 열기</button></h2>
       <div class="list">${fileRows || '<p class="empty">아직 연 PDF가 없어요. [PDF 열기]로 휴대폰·태블릿에 있는 PDF를 골라 보세요.<br>PDF는 인터넷에 올라가지 않고 이 기기 안에서만 열려요.</p>'}</div>
-      <footer>애플펜슬·S펜으로 쓰면 손바닥이 닿아도 괜찮아요 · 두 손가락으로 확대하고 옮겨요<br>휴대폰 앱처럼 쓰기 · 아이패드: 사파리 공유 → ‘홈 화면에 추가’ · 갤럭시탭: 크롬 메뉴(⋮) → ‘앱 설치’${VER_TAG}</footer>`;
+      <h2>학생 PDF 채점 <button class="btn ghost" type="button" data-a="pick-grade">학생 PDF 열기</button></h2>
+      <div class="list">${gradeRows || '<p class="empty">선생님용이에요. 학생이 카톡으로 보낸 PDF를 열면 빨간 펜과 ○ ✓ ✗ 도장으로 채점하고, [채점 돌려주기]로 다시 보낼 수 있어요.</p>'}</div>
+      <h2>필기 백업</h2>
+      <div class="bk-row">
+        <button class="btn ghost" type="button" data-a="backup">백업 파일 만들기</button>
+        <button class="btn ghost" type="button" data-a="restore">백업 불러오기</button>
+      </div>
+      <p class="hint">필기는 이 기기에만 저장돼요. 기기를 바꾸거나 앱을 지우기 전에 백업 파일을 만들어 두고, 새 기기에서 불러오세요.</p>
+      <footer>애플펜슬·S펜으로 쓰면 손바닥이 닿아도 괜찮아요 · 두 손가락으로 확대하고 옮겨요<br>선을 긋고 펜을 떼지 않은 채 잠깐 멈추면 반듯한 직선·원·사각형으로 바뀌어요<br>휴대폰 앱처럼 쓰기 · 아이패드: 사파리 공유 → ‘홈 화면에 추가’ · 갤럭시탭: 크롬 메뉴(⋮) → ‘앱 설치’${VER_TAG}</footer>`;
   }
 
   home.addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.a === 'pick') { $('#file-in').click(); return; }
+    if (b.dataset.a === 'pick') { pickKind = 'file'; $('#file-in').click(); return; }
+    if (b.dataset.a === 'pick-grade') { pickKind = 'grade'; $('#file-in').click(); return; }
+    if (b.dataset.a === 'backup') { openBackup(); return; }
+    if (b.dataset.a === 'restore') { $('#bk-in').click(); return; }
     if (b.dataset.sheet) { openSheet(SHEETS.find(s => s.id === b.dataset.sheet)); return; }
     if (b.dataset.open) { openDoc(b.dataset.open); return; }
     if (b.dataset.del) {
@@ -185,14 +254,17 @@
     const f = e.target.files && e.target.files[0]; e.target.value = '';
     if (!f) return;
     if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { toast('PDF 파일만 열 수 있어요.'); return; }
+    const kind = pickKind;
     try {
       const buf = await f.arrayBuffer();
-      // 같은 파일(이름·크기 같음)을 다시 고르면 예전 필기를 이어서
+      // 같은 파일(이름·크기 같음)을 다시 고르면 예전 필기를 이어서 (백업에서 불러와 PDF가 없던 것도 여기서 다시 이어짐)
       const metas = await DB.all('meta').catch(() => []);
-      const same = metas.find(m => m.kind === 'file' && m.name === f.name && m.size === f.size);
-      const id = same ? same.id : 'file:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const same = metas.find(m => m.kind === kind && m.name === f.name && m.size === f.size);
+      const id = same ? same.id : kind + ':' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       await DB.put('pdf', { id, data: buf });
-      await DB.put('meta', Object.assign(same || { id, kind: 'file', added: Date.now() }, { name: f.name, size: f.size }));
+      const meta = Object.assign(same || { id, kind, added: Date.now() }, { name: f.name, size: f.size });
+      delete meta.noPdf;
+      await DB.put('meta', meta);
       openDoc(id);
     } catch (err) { toast('PDF를 저장하지 못했어요. 저장 공간이 부족한지 확인해 주세요.', 4000); }
   });
@@ -212,17 +284,20 @@
       } catch (err) { toast('학습지를 받지 못했어요. 인터넷 연결을 확인해 주세요.', 4000); return; }
       meta = Object.assign(meta || { id, kind: 'sheet', added: Date.now() }, { file: url });
     }
-    meta.name = sheet.title || sheet.id; meta.sheetId = sheet.id;
+    meta.name = sheet.title || sheet.id; meta.sheetId = sheet.id; delete meta.noPdf;
     await DB.put('meta', meta);
     $('#toast').hidden = true;
     openDoc(id);
   }
 
   // ════════════════ 문서 열기 ════════════════
+  // 쪽 = { src: PDF 쪽 번호(0부터) | blank: 'plain'|'lines'|'grid' (넣은 빈 쪽), w, h, ink: [항목…] }
+  // 항목: 선 { k:'pen'|'hl', c, w, p:[[x,y,압력]], pr?, sh?(반듯한 도형) } · 글자 { k:'text', x, y, t, c, fs, tw, th } · 가림막 { k:'cover', x, y, cw, ch }
   let loadToken = 0;
   async function openDoc(id) {
     const token = ++loadToken;
     const [meta, pdfRec, inkRec] = await Promise.all([DB.get('meta', id), DB.get('pdf', id), DB.get('ink', id)].map(p => p.catch(() => null)));
+    if (meta && !pdfRec && meta.noPdf) { toast('이 기기에 PDF 파일이 없어요. [PDF 열기]로 같은 PDF를 고르면 필기가 이어져요.', 5000); return; }
     if (!meta || !pdfRec) { toast('파일을 찾지 못했어요.'); return; }
     let lib;
     try { lib = await pdfjs(); } catch (e) { toast('PDF 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.', 4000); return; }
@@ -232,38 +307,60 @@
       pdf = await lib.getDocument({ data: new Uint8Array(pdfRec.data.slice(0)), isEvalSupported: false }).promise;
     } catch (e) { toast(e && e.name === 'PasswordException' ? '암호가 걸린 PDF는 열 수 없어요.' : 'PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.', 4000); return; }
     if (token !== loadToken) return;
-    resetRender();
+    resetRender(); clearSel(); stopTimer();
     if (S.pdf && S.pdf !== pdf) { try { S.pdf.destroy(); } catch (e) {} }
-    S.pdf = pdf; S.meta = meta; S.ink = (inkRec && inkRec.pages) || {}; S.hist = []; S.redo = [];
-    S.pages = [];
+    S.pdf = pdf; S.meta = meta; S.hist = []; S.redo = [];
     const first = await pdf.getPage(1), v1 = first.getViewport({ scale: 1 });
-    for (let i = 0; i < pdf.numPages; i++) S.pages.push({ w: v1.width, h: v1.height, vp: null, el: null, pdfScale: 0, inkScale: 0 });
-    S.pages[0].vp = v1;
-    meta.pages = pdf.numPages; meta.opened = Date.now(); DB.put('meta', meta).catch(() => {});
+    const n = pdf.numPages;
+    // 넣은 빈 쪽이 있으면 저장된 순서대로. PDF 쪽은 늘 원래 순서 (학습지가 바뀌어 쪽 수가 달라져도 맞춰 줌)
+    let order = inkRec && Array.isArray(inkRec.order) ? inkRec.order.filter(o => o && (o.b ? o.w > 0 && o.h > 0 : Number.isInteger(o.s) && o.s >= 0 && o.s < n)) : null;
+    if (order) {
+      const srcs = order.filter(o => !o.b).map(o => o.s);
+      if (srcs.some((v, k) => k && v <= srcs[k - 1])) order = null;
+      else for (let s = (srcs.length ? srcs[srcs.length - 1] + 1 : 0); s < n; s++) order.push({ s });
+      if (order && order.filter(o => !o.b).length !== n) order = null;
+    }
+    if (!order) order = Array.from({ length: n }, (_, s) => ({ s }));
+    const saved = (inkRec && inkRec.pages) || {};
+    S.pages = order.map((o, i) => o.b ? newPage({ blank: o.b, w: o.w, h: o.h }, saved[i]) : newPage({ src: o.s, w: v1.width, h: v1.height }, saved[i]));
+    S.pages.forEach(pg => { if (pg.src === 0) pg.vp = v1; });
+    meta.pages = S.pages.length; meta.opened = Date.now(); DB.put('meta', meta).catch(() => {});
+    // 채점할 PDF는 빨간 펜으로 시작
+    if (meta.kind === 'grade') { S.pen = 1; S.tool = 'draw'; }
+    else if (S.tool === 'stamp') S.tool = 'draw';
     // 열 때는 늘 화면 폭에 맞춤 (휴대폰·태블릿을 오가도 어긋나지 않게). 마지막에 보던 쪽만 기억
-    S.zoom = 1; S.cur = Math.min(meta.lastPage || 0, pdf.numPages - 1);
+    S.zoom = 1; S.cur = Math.min(meta.lastPage || 0, S.pages.length - 1);
     buildPages();
     showViewer();
     // 나머지 쪽 크기는 뒤에서 차례로 읽어 맞춤 (쪽마다 크기가 다른 PDF)
     (async () => {
-      for (let i = 1; i < pdf.numPages; i++) {
+      for (let s = 1; s < n; s++) {
         if (token !== loadToken) return;
-        const pg = await pdf.getPage(i + 1), v = pg.getViewport({ scale: 1 });
-        S.pages[i].vp = v;
-        if (Math.abs(v.width - S.pages[i].w) > 0.5 || Math.abs(v.height - S.pages[i].h) > 0.5) { S.pages[i].w = v.width; S.pages[i].h = v.height; scheduleLayout(); }
+        const pgp = await pdf.getPage(s + 1), v = pgp.getViewport({ scale: 1 });
+        const pg = S.pages.find(p => p.src === s); if (!pg) continue;
+        pg.vp = v;
+        if (Math.abs(v.width - pg.w) > 0.5 || Math.abs(v.height - pg.h) > 0.5) { pg.w = v.width; pg.h = v.height; scheduleLayout(); }
       }
     })().catch(() => {});
   }
+  function newPage(o, ink) {
+    return Object.assign({ src: null, blank: null, vp: null, el: null, pdfScale: 0, inkScale: 0, ink: Array.isArray(ink) ? ink : [] }, o);
+  }
 
+  function makePageEl(pg) {
+    const el = document.createElement('div');
+    el.className = 'page loading';
+    el.innerHTML = '<canvas class="pdfc"></canvas><canvas class="inkc"></canvas><div class="covers"></div><span class="pnum"></span>';
+    pg.el = el; pg.pdfScale = 0; pg.inkScale = 0;
+    return el;
+  }
   function buildPages() {
     pagesEl.innerHTML = '';
-    S.pages.forEach((pg, i) => {
-      const el = document.createElement('div');
-      el.className = 'page loading'; el.dataset.i = i;
-      el.innerHTML = `<canvas class="pdfc"></canvas><canvas class="inkc"></canvas><span class="pnum">${i + 1}</span>`;
-      pg.el = el; pg.pdfScale = 0; pg.inkScale = 0;
-      pagesEl.appendChild(el);
-    });
+    S.pages.forEach(pg => pagesEl.appendChild(makePageEl(pg)));
+    renumber();
+  }
+  function renumber() {
+    S.pages.forEach((pg, i) => { pg.el.dataset.i = i; pg.el.querySelector('.pnum').textContent = (i + 1) + (pg.blank ? ' · 넣은 쪽' : ''); });
   }
 
   function showViewer() {
@@ -279,6 +376,7 @@
   async function closeDoc() {
     await flushInk();
     if (S.present) exitPresent();
+    clearSel(); stopTimer();
     if (S.meta) { S.meta.lastPage = S.cur; await DB.put('meta', S.meta).catch(() => {}); }
     loadToken++; resetRender();
     viewer.hidden = true; home.hidden = false; $('#thumbs').hidden = true;
@@ -338,7 +436,7 @@
   window.addEventListener('resize', () => { if (S.view === 'doc') scheduleLayout(); });
 
   // ════════════════ 그리기 (PDF·필기) ════════════════
-  const queue = new Set();
+  const queue = new Set();   // 다시 그릴 쪽(쪽 객체)
   let rendering = false, renderGen = 0;   // 문서를 바꾸면 renderGen이 올라가서, 그리던 중인 옛 작업은 손을 뗌
   function resetRender() { renderGen++; rendering = false; queue.clear(); }
   function updateVisible() {
@@ -360,8 +458,8 @@
         c.width = c.height = 0; k.width = k.height = 0; pg.pdfScale = 0; pg.inkScale = 0; pg.el.classList.add('loading');
       }
     });
-    for (const i of keep) { if (S.pages[i].inkScale !== S.scale) drawInk(i); if (S.pages[i].pdfScale !== S.scale) queue.add(i); }
-    pump(vis);
+    for (const i of keep) { const pg = S.pages[i]; if (pg.inkScale !== S.scale) drawInk(i); if (pg.pdfScale !== S.scale) queue.add(pg); }
+    pump(vis.map(i => S.pages[i]));
     updatePageNo(vis);
   }
   async function pump(prefer = []) {
@@ -371,54 +469,91 @@
     try {
       while (queue.size && S.view === 'doc' && gen === renderGen) {
         const list = [...queue];
-        const i = list.find(x => prefer.includes(x)) ?? list[0];
-        queue.delete(i);
-        const pg = S.pages[i];
-        if (!pg || pg.pdfScale === S.scale) continue;
+        const pg = list.find(x => prefer.includes(x)) ?? list[0];
+        queue.delete(pg);
+        if (!S.pages.includes(pg) || pg.pdfScale === S.scale) continue;
         const scale = S.scale, pdf = S.pdf;
-        const page = await pdf.getPage(i + 1);
         const cssW = pg.w * scale, cssH = pg.h * scale;
         let px = DPR(); if (cssW * cssH * px * px > MAX_PX) px = Math.sqrt(MAX_PX / (cssW * cssH));
-        const vp = page.getViewport({ scale: scale * px });
         const c = document.createElement('canvas');
-        c.className = 'pdfc'; c.width = Math.max(1, Math.floor(vp.width)); c.height = Math.max(1, Math.floor(vp.height));
-        await page.render({ canvasContext: c.getContext('2d', { alpha: false }), viewport: vp }).promise;
+        c.className = 'pdfc';
+        if (pg.blank) {
+          c.width = Math.max(1, Math.floor(cssW * px)); c.height = Math.max(1, Math.floor(cssH * px));
+          paintPattern(c.getContext('2d', { alpha: false }), pg, scale * px);
+        } else {
+          const page = await pdf.getPage(pg.src + 1);
+          const vp = page.getViewport({ scale: scale * px });
+          c.width = Math.max(1, Math.floor(vp.width)); c.height = Math.max(1, Math.floor(vp.height));
+          await page.render({ canvasContext: c.getContext('2d', { alpha: false }), viewport: vp }).promise;
+        }
         if (gen !== renderGen || pdf !== S.pdf) return;
         // 다 그린 뒤에 바꿔 끼워서, 확대할 때 하얗게 비는 순간이 없게
         const old = pg.el.querySelector('.pdfc'); pg.el.replaceChild(c, old); old.width = old.height = 0;
         pg.pdfScale = scale; pg.el.classList.remove('loading');
-        if (scale !== S.scale) queue.add(i);
+        if (scale !== S.scale) queue.add(pg);
       }
     } catch (e) { /* 문서를 닫는 중에 생긴 오류는 무시 */ }
     if (gen !== renderGen) return;
     rendering = false;
     if (queue.size && S.view === 'doc') pump(prefer);
   }
+  // 넣은 빈 쪽의 바탕: 백지·줄 노트·모눈
+  const PATTERN = { plain: '백지', lines: '줄 노트', grid: '모눈' };
+  function patternLines(pg) {
+    const L = [], { w, h } = pg;
+    if (pg.blank === 'lines') for (let y = 56; y < h - 24; y += 26) L.push([28, y, w - 28, y]);
+    if (pg.blank === 'grid') { for (let x = 18; x < w; x += 18) L.push([x, 0, x, h]); for (let y = 18; y < h; y += 18) L.push([0, y, w, y]); }
+    return L;
+  }
+  function paintPattern(ctx, pg, k) {
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pg.w * k, pg.h * k);
+    ctx.strokeStyle = pg.blank === 'grid' ? '#DCE3EC' : '#C5D0DE'; ctx.lineWidth = Math.max(0.5, 0.6 * k);
+    ctx.beginPath();
+    for (const [x0, y0, x1, y1] of patternLines(pg)) { ctx.moveTo(x0 * k, y0 * k); ctx.lineTo(x1 * k, y1 * k); }
+    ctx.stroke();
+  }
 
-  // 필기 캔버스: 쪽 크기 × 화면 배율. 선 좌표(pt) × k = 캔버스 픽셀
+  // 필기 캔버스: 쪽 크기 × 화면 배율. 좌표(pt) × k = 캔버스 픽셀
   function inkK(pg) {
     const cssW = pg.w * S.scale, cssH = pg.h * S.scale;
     let px = DPR(); if (cssW * cssH * px * px > MAX_PX) px = Math.sqrt(MAX_PX / (cssW * cssH));
     return S.scale * px;
   }
-  function drawInk(i) {
-    const pg = S.pages[i], c = pg.el.querySelector('.inkc'), k = inkK(pg);
+  // off: 옮기는 중인 선택 항목 { set, dx, dy }
+  function drawInk(i, off) {
+    const pg = S.pages[i]; if (!pg) return;
+    const c = pg.el.querySelector('.inkc'), k = inkK(pg);
     const w = Math.max(1, Math.floor(pg.w * k)), h = Math.max(1, Math.floor(pg.h * k));
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const ctx = c.getContext('2d');
     ctx.clearRect(0, 0, w, h);
-    for (const s of S.ink[i] || []) paintStroke(ctx, s, k);
+    for (const s of pg.ink) {
+      if (off && off.set.has(s)) { ctx.save(); ctx.translate(off.dx * k, off.dy * k); paintItem(ctx, s, k); ctx.restore(); }
+      else paintItem(ctx, s, k);
+    }
     pg.inkScale = S.scale;
+    renderCovers(pg, off);
+  }
+  const drawPg = pg => { const i = S.pages.indexOf(pg); if (i >= 0) drawInk(i); };
+  function paintItem(ctx, s, k) {
+    if (s.k === 'text') paintText(ctx, s, k);
+    else if (s.k === 'pen' || s.k === 'hl') paintStroke(ctx, s, k);
   }
   const widthAt = (s, pr) => s.w * (0.45 + 1.1 * Math.max(0, Math.min(1, pr)));
-  // 선 그리기: 점 사이를 부드러운 곡선으로. 펜 압력이 있으면 마디마다 굵기를 바꿈
+  // 선 그리기: 점 사이를 부드러운 곡선으로. 펜 압력이 있으면 마디마다 굵기를 바꿈. 반듯한 도형(sh)은 꺾인 그대로
   function paintStroke(ctx, s, k) {
     const P = s.p, n = P.length;
     if (!n) return;
     ctx.save();
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = s.c;
     if (s.k === 'hl') { ctx.globalAlpha = HL_ALPHA; ctx.globalCompositeOperation = 'multiply'; }
-    if (s.k === 'hl' || !s.pr || n < 3) {
+    if (s.sh) {
+      ctx.lineWidth = s.w * k;
+      ctx.beginPath(); ctx.moveTo(P[0][0] * k, P[0][1] * k);
+      for (let i = 1; i < n; i++) ctx.lineTo(P[i][0] * k, P[i][1] * k);
+      if (n === 1) ctx.lineTo(P[0][0] * k + 0.01, P[0][1] * k);
+      ctx.stroke();
+    } else if (s.k === 'hl' || !s.pr || n < 3) {
       ctx.lineWidth = (s.k === 'hl' || !s.pr ? s.w : widthAt(s, P[0][2])) * k;
       ctx.beginPath(); ctx.moveTo(P[0][0] * k, P[0][1] * k);
       if (n === 1) ctx.lineTo(P[0][0] * k + 0.01, P[0][1] * k);
@@ -446,28 +581,208 @@
       fn(a, c, b, (P[i][2] + P[i + 1][2]) / 2);
     }
   }
+  // 글자 상자
+  const LINE_H = 1.3;
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  function measureText(s) {
+    const lines = String(s.t).split('\n');
+    measureCtx.font = `500 100px ${FONT}`;
+    s.tw = r2(Math.max(...lines.map(l => measureCtx.measureText(l).width)) / 100 * s.fs + 2);
+    s.th = r2(lines.length * s.fs * LINE_H);
+    return s;
+  }
+  function paintText(ctx, s, k) {
+    ctx.save();
+    ctx.fillStyle = s.c; ctx.textBaseline = 'top'; ctx.font = `500 ${s.fs * k}px ${FONT}`;
+    String(s.t).split('\n').forEach((l, n) => ctx.fillText(l, s.x * k, (s.y + n * s.fs * LINE_H + s.fs * 0.12) * k));
+    ctx.restore();
+  }
+
+  // 가림막: 쪽 위의 상자(DOM). 누르면 열리고 다시 누르면 닫힘. 열린 상태는 저장하지 않음(다시 열면 모두 가려짐)
+  const opened = new WeakSet();
+  function renderCovers(pg, off) {
+    const layer = pg.el && pg.el.querySelector('.covers'); if (!layer) return;
+    const list = pg.ink.filter(s => s.k === 'cover');
+    layer.innerHTML = list.map(s => {
+      const o = off && off.set.has(s) ? off : { dx: 0, dy: 0 };
+      return `<div class="cover${opened.has(s) ? ' open' : ''}" style="left:${(s.x + o.dx) / pg.w * 100}%;top:${(s.y + o.dy) / pg.h * 100}%;width:${s.cw / pg.w * 100}%;height:${s.ch / pg.h * 100}%"><span>${opened.has(s) ? '' : '눌러서 보기'}</span></div>`;
+    }).join('');
+  }
+  function coverAt(pg, [x, y]) {
+    for (let j = pg.ink.length - 1; j >= 0; j--) {
+      const s = pg.ink[j];
+      if (s.k === 'cover' && x >= s.x && x <= s.x + s.cw && y >= s.y && y <= s.y + s.ch) return s;
+    }
+    return null;
+  }
+  function toggleCoverAt(pg, pt) {
+    const s = coverAt(pg, pt); if (!s) return false;
+    if (opened.has(s)) opened.delete(s); else opened.add(s);
+    renderCovers(pg);
+    return true;
+  }
+
+  // ── 항목 공통: 범위·닿음·옮기기 ──
+  function bounds(s) {
+    if (s.k === 'cover') return [s.x, s.y, s.x + s.cw, s.y + s.ch];
+    if (s.k === 'text') return [s.x, s.y, s.x + s.tw, s.y + s.th];
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const q of s.p) { a = Math.min(a, q[0]); b = Math.min(b, q[1]); c = Math.max(c, q[0]); d = Math.max(d, q[1]); }
+    const h = s.w / 2;
+    return [a - h, b - h, c + h, d + h];
+  }
+  function hitItem(s, x, y, R) {
+    if (s.k === 'cover' || s.k === 'text') { const [a, b, c, d] = bounds(s); return x >= a - R && x <= c + R && y >= b - R && y <= d + R; }
+    const pad = R + s.w / 2;
+    return s.p.some((q, n) => n === 0 ? Math.hypot(q[0] - x, q[1] - y) < pad : segDist(x, y, s.p[n - 1][0], s.p[n - 1][1], q[0], q[1]) < pad);
+  }
+  function translate(s, dx, dy) {
+    if (s.k === 'cover' || s.k === 'text') { s.x = r2(s.x + dx); s.y = r2(s.y + dy); }
+    else s.p = s.p.map(([x, y, pr]) => [r2(x + dx), r2(y + dy), pr]);
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+    const t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  // ════════════════ 도형 맞춤: 긋고 잠깐 멈추면 반듯하게 ════════════════
+  const pathLen = P => { let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); return L; };
+  function rdp(P, eps) {
+    if (P.length < 3) return P.slice();
+    const a = P[0], b = P[P.length - 1];
+    let dm = 0, idx = 0;
+    for (let i = 1; i < P.length - 1; i++) { const d = segDist(P[i][0], P[i][1], a[0], a[1], b[0], b[1]); if (d > dm) { dm = d; idx = i; } }
+    if (dm <= eps) return [a, b];
+    return rdp(P.slice(0, idx + 1), eps).slice(0, -1).concat(rdp(P.slice(idx), eps));
+  }
+  function polyErr(P, Vx, closed) {
+    let sum = 0;
+    const m = closed ? Vx.length : Vx.length - 1;
+    for (const q of P) {
+      let best = Infinity;
+      for (let i = 0; i < m; i++) { const a = Vx[i], b = Vx[(i + 1) % Vx.length]; best = Math.min(best, segDist(q[0], q[1], a[0], a[1], b[0], b[1])); }
+      sum += best;
+    }
+    return sum / P.length;
+  }
+  // 닫힌 모양의 꼭짓점: 시작점에서 가장 먼 점으로 둘로 나눠 각각 줄이고, 꼭짓점이 아닌 시작점은 뺌
+  function closedCorners(P, eps) {
+    let far = 0, fd = 0;
+    P.forEach((q, i) => { const d = Math.hypot(q[0] - P[0][0], q[1] - P[0][1]); if (d > fd) { fd = d; far = i; } });
+    let Vx = rdp(P.slice(0, far + 1), eps).slice(0, -1).concat(rdp(P.slice(far), eps).slice(0, -1));
+    Vx = Vx.filter((v, i) => i === 0 || Math.hypot(v[0] - Vx[i - 1][0], v[1] - Vx[i - 1][1]) > eps);
+    if (Vx.length > 3) {
+      const a = Vx[Vx.length - 1], b = Vx[1];
+      if (segDist(Vx[0][0], Vx[0][1], a[0], a[1], b[0], b[1]) < eps) Vx.shift();
+    }
+    return Vx;
+  }
+  function recognize(P0) {
+    const P = P0.map(q => [q[0], q[1]]);
+    if (P.length < 3) return null;
+    const xs = P.map(q => q[0]), ys = P.map(q => q[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const D = Math.hypot(x1 - x0, y1 - y0), tol = 4 / S.scale;
+    if (D < 16 / S.scale) return null;
+    const a = P[0], b = P[P.length - 1], L = pathLen(P), ab = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // 직선: 수평·수직·45°에 가까우면 딱 맞춤
+    let dev = 0; for (const q of P) dev = Math.max(dev, segDist(q[0], q[1], a[0], a[1], b[0], b[1]));
+    if (ab > 0.85 * L && dev < Math.max(tol, ab * 0.06)) {
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), q = Math.round(ang / (Math.PI / 4)) * (Math.PI / 4);
+      const e = Math.abs(ang - q) < 0.08 ? [a[0] + ab * Math.cos(q), a[1] + ab * Math.sin(q)] : b;
+      return { type: 'line', p: [a, e] };
+    }
+    if (ab < 0.3 * D) {
+      // 삼각형·사각형
+      const Vx = closedCorners(P, 0.07 * D);
+      if ((Vx.length === 3 || Vx.length === 4) && polyErr(P, Vx, true) / D < 0.035) {
+        let poly = Vx;
+        const axis = Vx.length === 4 && Vx.every((v, i) => { const w = Vx[(i + 1) % 4], t = Math.abs(Math.atan2(w[1] - v[1], w[0] - v[0])) % (Math.PI / 2); return Math.min(t, Math.PI / 2 - t) < 0.21; });
+        if (axis) poly = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+        return { type: Vx.length === 3 ? 'triangle' : 'rect', p: poly.concat([poly[0]]) };
+      }
+      // 원·타원 (거의 동그라면 원으로)
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      let rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+      if (rx < tol || ry < tol) return null;
+      let e = 0; for (const q of P) e += Math.abs(Math.hypot((q[0] - cx) / rx, (q[1] - cy) / ry) - 1);
+      if (e / P.length < 0.1) {
+        if (Math.abs(rx - ry) / Math.max(rx, ry) < 0.18) rx = ry = (rx + ry) / 2;
+        return { type: 'ellipse', p: Array.from({ length: 65 }, (_, i) => { const t = i / 64 * Math.PI * 2; return [cx + rx * Math.cos(t), cy + ry * Math.sin(t)]; }) };
+      }
+      return null;
+    }
+    // 꺾은선 (각도·꺾인 화살표 몸통)
+    const Vx = rdp(P, 0.05 * D);
+    if (Vx.length >= 3 && Vx.length <= 4 && polyErr(P, Vx, false) / D < 0.03) return { type: 'poly', p: Vx };
+    return null;
+  }
+
+  // ════════════════ 레이저 포인터·지우개 동그라미 (화면 위 효과) ════════════════
+  const fx = $('#fx');
+  const FX = { trail: [], head: null, ring: null, raf: 0 };
+  const LASER_LIFE = 700;
+  function fxKick() { if (!FX.raf) FX.raf = requestAnimationFrame(fxFrame); }
+  function fxFrame() {
+    FX.raf = 0;
+    const dpr = DPR(), W = window.innerWidth, H = window.innerHeight;
+    if (fx.width !== Math.round(W * dpr) || fx.height !== Math.round(H * dpr)) { fx.width = Math.round(W * dpr); fx.height = Math.round(H * dpr); }
+    const ctx = fx.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const now = performance.now();
+    FX.trail = FX.trail.filter(p => now - p.t < LASER_LIFE);
+    ctx.lineCap = 'round';
+    for (let n = 1; n < FX.trail.length; n++) {
+      const a = FX.trail[n - 1], b = FX.trail[n]; if (b.gap) continue;
+      const al = 1 - (now - b.t) / LASER_LIFE;
+      ctx.strokeStyle = `rgba(255,45,45,${(al * 0.85).toFixed(3)})`; ctx.lineWidth = 2.5 + 4 * al;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    if (FX.head) {
+      ctx.fillStyle = 'rgba(255,45,45,.22)'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FF2D2D'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    if (FX.ring) {
+      ctx.strokeStyle = 'rgba(60,70,85,.85)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.arc(FX.ring.x, FX.ring.y, FX.ring.r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (FX.trail.length) FX.raf = requestAnimationFrame(fxFrame);
+  }
 
   // ════════════════ 손·펜 입력 ════════════════
   const ptrs = new Map();   // pointerId → { x, y, type }
-  let mode = null;          // draw | erase | pan | pinch
-  let live = null;          // 그리는 중: { i, s, canvas, k }
-  let pan = null, pinch = null, erased = null, swipe = null;
+  let mode = null;          // act(한 손가락·펜으로 하는 일) | pan | pinch
+  let act = null;           // { k: draw|erase|laser|cover|text|stamp|lasso|move, type, id, … }
+  let pan = null, pinch = null, swipe = null;
   const liveCanvas = document.createElement('canvas');
   liveCanvas.className = 'livec';
-  liveCanvas.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none';
+  liveCanvas.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:3';
 
   function pageAt(x, y) {
     for (let i = 0; i < S.pages.length; i++) {
       const pg = S.pages[i];
       if (pg.el.style.display === 'none') continue;
       const r = pg.el.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return { i, r };
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return { i, pg, r };
     }
     return null;
   }
   const toPt = (e, r) => [(e.clientX - r.left) / S.scale, (e.clientY - r.top) / S.scale];
   const touchList = () => [...ptrs.values()].filter(p => p.type === 'touch');
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const isTap = (a, e) => Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 10 && performance.now() - a.t0 < 450;
+  function startPan(e) {
+    mode = 'pan'; pan = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), t: performance.now(), vx: 0, vy: 0, moved: 0 };
+    swipe = S.present && S.zoom <= 1.02 ? { x0: e.clientX, y0: e.clientY } : null;
+  }
+  function liveOn(pg) {
+    const k = inkK(pg);
+    liveCanvas.width = Math.max(1, Math.floor(pg.w * k)); liveCanvas.height = Math.max(1, Math.floor(pg.h * k));
+    liveCanvas.getContext('2d').clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+    pg.el.appendChild(liveCanvas);
+    return k;
+  }
 
   docEl.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -476,47 +791,66 @@
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     stopFling();
     // 펜으로 쓰는 중에 닿는 손(손바닥)은 모두 무시. 반대로 손이 닿아 있어도 펜을 대면 펜이 이김
-    const penBusy = (mode === 'draw' && live && live.type === 'pen') || (mode === 'erase' && erased && erased.type === 'pen');
+    const penBusy = mode === 'act' && act && act.type === 'pen';
     if (e.pointerType === 'touch' && penBusy) return;
     if (e.pointerType === 'pen' && (mode === 'pan' || mode === 'pinch')) { mode = null; pan = pinch = swipe = null; }
+    if (e.pointerType === 'pen' && mode === 'act' && act && act.type !== 'pen') { cancelAct(); mode = null; }
     if (e.pointerType === 'pen' && !S.penSeen) {
       S.penSeen = true; ls.set(K.pen, true);
       if (S.finger === 'auto') { renderTools(); toast('펜을 쓰고 있어서 손가락은 화면 옮기기로 바뀌었어요. (손바닥이 닿아도 안 써져요)', 3600); }
     }
-    // 두 손가락 → 확대·이동 (손가락으로 막 긋던 선은 취소)
+    // 두 손가락 → 확대·이동 (손가락으로 막 하던 일은 취소)
     if (e.pointerType === 'touch' && touchList().length >= 2) {
-      if (live && live.type === 'touch') cancelLive();
-      if (mode === 'erase' && erased && erased.type === 'touch') endErase();
+      if (mode === 'act' && act && act.type === 'touch') cancelAct();
       const [a, b] = touchList();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       mode = 'pinch'; pinch = { d0: Math.max(10, dist(a, b)), z0: S.zoom, a: anchor(mx, my) };
       swipe = null;
       return;
     }
-    if (mode === 'draw' || mode === 'erase' || mode === 'pinch') return;   // 펜으로 쓰는 중에 닿은 손바닥 무시
+    if (mode === 'act' || mode === 'pinch') return;   // 펜으로 쓰는 중에 닿은 손바닥 무시
     const byFinger = e.pointerType === 'touch';
-    if (byFinger && !fingerDraws()) {
-      mode = 'pan'; pan = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), vx: 0, vy: 0 };
-      swipe = S.present && S.zoom <= 1.02 ? { x0: e.clientX, y0: e.clientY } : null;
+    if (byFinger && !fingerDraws()) { startPan(e); return; }
+    const base = { type: e.pointerType, id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now() };
+    // S펜 옆 버튼·애플펜슬 지우개 끝(버튼 32) → 지우개
+    const tool = e.pointerType === 'pen' && (e.buttons & 32) ? 'erase' : S.tool;
+    if (tool === 'laser') {
+      mode = 'act'; act = Object.assign(base, { k: 'laser' });
+      FX.trail.push({ x: e.clientX, y: e.clientY, t: performance.now(), gap: true }); FX.head = { x: e.clientX, y: e.clientY }; fxKick();
       return;
     }
     const hit = pageAt(e.clientX, e.clientY);
     if (!hit) {
-      if (byFinger) { mode = 'pan'; pan = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), vx: 0, vy: 0 }; }
+      if (tool === 'lasso') clearSel();
+      if (byFinger) startPan(e);
       return;
     }
-    // S펜 옆 버튼·애플펜슬 지우개 끝(버튼 32) → 지우개
-    const erase = S.tool === 'erase' || (e.pointerType === 'pen' && (e.buttons & 32));
-    if (erase) { mode = 'erase'; erased = { type: e.pointerType, id: e.pointerId, items: [] }; eraseAt(hit.i, toPt(e, hit.r)); return; }
+    const pg = hit.pg, pt = toPt(e, hit.r);
+    mode = 'act';
+    if (tool === 'erase') {
+      act = Object.assign(base, { k: 'erase', part: S.eraseMode === 'part', items: [], adds: [], made: new Set() });
+      eraseAt(pg, pt, e);
+      return;
+    }
+    if (tool === 'cover') {
+      const el = document.createElement('div'); el.className = 'cover live';
+      pg.el.querySelector('.covers').appendChild(el);
+      act = Object.assign(base, { k: 'cover', pg, r: hit.r, p0: pt, p1: pt, el });
+      return;
+    }
+    if (tool === 'text' || tool === 'stamp') { act = Object.assign(base, { k: tool, pg, pt }); return; }
+    if (tool === 'lasso') {
+      if (SEL && SEL.pg === pg && inBox(selBox(), pt)) { act = Object.assign(base, { k: 'move', pg, r: hit.r, p0: pt, dx: 0, dy: 0 }); return; }
+      clearSel();
+      act = Object.assign(base, { k: 'lasso', pg, r: hit.r, pts: [pt], kk: liveOn(pg) });
+      return;
+    }
     const pen = PENS[S.pen];
     const pr = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
-    const s = { k: pen.k, c: pen.c, w: SIZES[pen.k][S.size], p: [[...toPt(e, hit.r), pr]] };
+    const s = { k: pen.k, c: pen.c, w: SIZES[pen.k][S.size], p: [[...pt, pr]] };
     if (e.pointerType === 'pen' && pen.k === 'pen') s.pr = 1;
-    mode = 'draw';
-    const pg = S.pages[hit.i];
-    liveCanvas.width = Math.max(1, Math.floor(pg.w * inkK(pg))); liveCanvas.height = Math.max(1, Math.floor(pg.h * inkK(pg)));
-    pg.el.appendChild(liveCanvas);
-    live = { i: hit.i, s, k: inkK(pg), type: e.pointerType, id: e.pointerId, r: hit.r, smooth: pr };
+    act = Object.assign(base, { k: 'draw', pg, s, kk: liveOn(pg), r: hit.r, smooth: pr, hx: e.clientX, hy: e.clientY });
+    holdArm();
     paintLive();
   });
 
@@ -539,22 +873,56 @@
       pan.x = e.clientX; pan.y = e.clientY; pan.t = now;
       return;
     }
-    if (mode === 'draw' && live && e.pointerId === live.id) {
-      // 빠르게 움직일 때 빠진 점까지 모두 받아서 펜 끝을 정확히 따라감
-      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
-      for (const ev of (evs.length ? evs : [e])) {
-        const raw = live.type === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5;
-        live.smooth = live.smooth * 0.6 + raw * 0.4;
-        const pt = toPt(ev, live.r), last = live.s.p[live.s.p.length - 1];
-        if (Math.abs(pt[0] - last[0]) + Math.abs(pt[1] - last[1]) < 0.25) continue;
-        live.s.p.push([pt[0], pt[1], live.smooth]);
+    if (mode !== 'act' || !act || e.pointerId !== act.id) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    const all = evs.length ? evs : [e];
+    switch (act.k) {
+      case 'draw': {
+        if (act.snapped) {
+          // 직선으로 맞춘 뒤에는 끝점이 펜을 따라감
+          if (act.snapped === 'line') { const q = toPt(e, act.r); act.s.p[1] = [r2(q[0]), r2(q[1]), 0.5]; schedLive(); }
+          return;
+        }
+        // 빠르게 움직일 때 빠진 점까지 모두 받아서 펜 끝을 정확히 따라감
+        for (const ev of all) {
+          const raw = act.type === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5;
+          act.smooth = act.smooth * 0.6 + raw * 0.4;
+          const pt = toPt(ev, act.r), last = act.s.p[act.s.p.length - 1];
+          if (Math.abs(pt[0] - last[0]) + Math.abs(pt[1] - last[1]) < 0.25) continue;
+          act.s.p.push([pt[0], pt[1], act.smooth]);
+        }
+        if (Math.hypot(e.clientX - act.hx, e.clientY - act.hy) > 4) { act.hx = e.clientX; act.hy = e.clientY; holdArm(); }
+        schedLive();
+        return;
       }
-      if (!live.raf) live.raf = requestAnimationFrame(() => { live && (live.raf = 0, paintLive()); });
-      return;
-    }
-    if (mode === 'erase' && erased && e.pointerId === erased.id) {
-      const hit = pageAt(e.clientX, e.clientY);
-      if (hit) for (const ev of (e.getCoalescedEvents ? e.getCoalescedEvents() : []).concat([e])) eraseAt(hit.i, toPt(ev, hit.r));
+      case 'erase': {
+        const hit = pageAt(e.clientX, e.clientY);
+        if (hit) for (const ev of all) eraseAt(hit.pg, toPt(ev, hit.r), ev);
+        return;
+      }
+      case 'laser': {
+        const now = performance.now();
+        for (const ev of all) FX.trail.push({ x: ev.clientX, y: ev.clientY, t: now });
+        FX.head = { x: e.clientX, y: e.clientY }; fxKick();
+        return;
+      }
+      case 'cover': {
+        act.p1 = toPt(e, act.r);
+        const [x, y, w, h] = rectOf(act.p0, act.p1, act.pg);
+        Object.assign(act.el.style, { left: x / act.pg.w * 100 + '%', top: y / act.pg.h * 100 + '%', width: w / act.pg.w * 100 + '%', height: h / act.pg.h * 100 + '%' });
+        return;
+      }
+      case 'lasso': {
+        for (const ev of all) act.pts.push(toPt(ev, act.r));
+        schedLive();
+        return;
+      }
+      case 'move': {
+        const q = toPt(e, act.r);
+        act.dx = q[0] - act.p0[0]; act.dy = q[1] - act.p0[1];
+        if (!act.raf) act.raf = requestAnimationFrame(() => { if (!act || act.k !== 'move') return; act.raf = 0; const i = S.pages.indexOf(act.pg); drawInk(i, { set: SEL.set, dx: act.dx, dy: act.dy }); showSel(act.dx, act.dy); });
+        return;
+      }
     }
   });
 
@@ -566,6 +934,8 @@
     }
     if (mode === 'pan' && pan && e.pointerId === pan.id) {
       mode = null;
+      // 손가락으로 가림막을 톡 → 열기·닫기
+      if (isTap(pan, e)) { const hit = pageAt(e.clientX, e.clientY); if (hit && toggleCoverAt(hit.pg, toPt(e, hit.r))) { pan = swipe = null; return; } }
       if (swipe) {
         const dx = e.clientX - swipe.x0, dy = e.clientY - swipe.y0;
         swipe = null;
@@ -575,11 +945,29 @@
       updateVisible();
       return;
     }
-    if (mode === 'draw' && live && e.pointerId === live.id) { commitLive(); mode = null; return; }
-    if (mode === 'erase' && erased && e.pointerId === erased.id) { endErase(); mode = null; }
+    if (mode !== 'act' || !act || e.pointerId !== act.id) return;
+    const a = act;
+    mode = null;
+    switch (a.k) {
+      case 'draw': commitLive(a); break;
+      case 'erase': endErase(); break;
+      case 'laser': {
+        FX.head = null; act = null; fxKick();
+        if (isTap(a, e)) { const hit = pageAt(e.clientX, e.clientY); if (hit) toggleCoverAt(hit.pg, toPt(e, hit.r)); }
+        break;
+      }
+      case 'cover': commitCover(a); break;
+      case 'text': act = null; if (isTap(a, e)) openText(a.pg, a.pt); break;
+      case 'stamp': act = null; if (isTap(a, e)) placeStamp(a.pg, a.pt); break;
+      case 'lasso': commitLasso(a); break;
+      case 'move': commitMove(a); break;
+    }
   }
   docEl.addEventListener('pointerup', endPointer);
-  docEl.addEventListener('pointercancel', e => { if (mode === 'draw' && live && e.pointerId === live.id) { cancelLive(); mode = null; } endPointer(e); });
+  docEl.addEventListener('pointercancel', e => {
+    if (mode === 'act' && act && e.pointerId === act.id && ['draw', 'lasso', 'cover', 'move'].includes(act.k)) { cancelAct(); mode = null; ptrs.delete(e.pointerId); return; }
+    endPointer(e);
+  });
   docEl.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; updateVisible(); }); }, { passive: true });
   let scrollRaf = 0;
   // 마우스·트랙패드: Ctrl+휠(또는 두 손가락 오므리기)로 확대
@@ -604,88 +992,269 @@
   }
   function stopFling() { if (flingRaf) cancelAnimationFrame(flingRaf); flingRaf = 0; }
 
+  // 그리는 중인 선·올가미는 위 캔버스에
+  function schedLive() { if (act && !act.raf) act.raf = requestAnimationFrame(() => { if (act) { act.raf = 0; paintLive(); } }); }
   function paintLive() {
-    if (!live) return;
+    if (!act) return;
     const ctx = liveCanvas.getContext('2d');
     ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
-    paintStroke(ctx, live.s, live.k);
+    if (act.k === 'draw') paintStroke(ctx, act.s, act.kk);
+    else if (act.k === 'lasso') {
+      const k = act.kk, d = DPR();
+      ctx.save(); ctx.strokeStyle = '#2B4C8C'; ctx.lineWidth = 1.5 * d; ctx.setLineDash([6 * d, 4 * d]);
+      ctx.beginPath(); act.pts.forEach((q, n) => n ? ctx.lineTo(q[0] * k, q[1] * k) : ctx.moveTo(q[0] * k, q[1] * k)); ctx.stroke(); ctx.restore();
+    }
   }
-  function cancelLive() {
-    if (!live) return;
-    if (live.raf) cancelAnimationFrame(live.raf);
-    liveCanvas.remove(); live = null;
+  function cancelAct() {
+    if (!act) return;
+    if (act.raf) cancelAnimationFrame(act.raf);
+    clearTimeout(holdTimer);
+    if (act.k === 'cover' && act.el) act.el.remove();
+    if (act.k === 'move') drawPg(act.pg), showSel();
+    if (act.k === 'erase') endErase();
+    if (act.k === 'laser') { FX.head = null; fxKick(); }
+    liveCanvas.remove(); act = null;
   }
-  function commitLive() {
-    const { i, s } = live;
-    if (live.raf) cancelAnimationFrame(live.raf);
-    liveCanvas.remove(); live = null;
-    s.p = s.p.map(([x, y, pr]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(pr * 100) / 100]);
-    (S.ink[i] = S.ink[i] || []).push(s);
-    S.hist.push({ t: 'add', i, s }); S.redo = [];
-    const pg = S.pages[i];
-    if (pg.inkScale === S.scale) paintStroke(pg.el.querySelector('.inkc').getContext('2d'), s, inkK(pg)); else drawInk(i);
-    changed();
+  // 펜을 떼지 않고 잠깐 멈추면 도형 맞춤
+  let holdTimer = 0;
+  function holdArm() {
+    clearTimeout(holdTimer);
+    if (!S.snap) return;
+    holdTimer = setTimeout(() => {
+      if (!act || act.k !== 'draw' || act.snapped) return;
+      const sh = recognize(act.s.p);
+      if (!sh) return;
+      act.s.p = sh.p.map(q => [r2(q[0]), r2(q[1]), 0.5]);
+      act.s.sh = 1; delete act.s.pr;
+      act.snapped = sh.type;
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
+      paintLive();
+    }, 550);
+  }
+  function commitLive(a) {
+    clearTimeout(holdTimer);
+    if (a.raf) cancelAnimationFrame(a.raf);
+    liveCanvas.remove(); act = null;
+    const { pg, s } = a;
+    // 가림막 위를 톡 → 선 대신 가림막 열기·닫기
+    if (!a.snapped && performance.now() - a.t0 < 350) {
+      const [bx0, by0, bx1, by1] = bounds(Object.assign({}, s, { w: 0 }));
+      if ((bx1 - bx0) * S.scale < 8 && (by1 - by0) * S.scale < 8 && toggleCoverAt(pg, s.p[0])) return;
+    }
+    if (!a.snapped) s.p = s.p.map(([x, y, pr]) => [r2(x), r2(y), r2(pr)]);
+    pg.ink.push(s);
+    record({ t: 'add', items: [{ pg, s }] });
+    if (pg.inkScale === S.scale) paintItem(pg.el.querySelector('.inkc').getContext('2d'), s, inkK(pg)); else drawPg(pg);
   }
 
-  // 지우개: 닿은 선을 통째로 지움
-  function eraseAt(i, [x, y]) {
-    const list = S.ink[i]; if (!list || !list.length) return;
-    const R = 6 / Math.min(S.scale, 3) + 2;   // 화면에서 손끝 정도 크기
+  // 지우개: 선 통째로 또는 문지른 부분만(선을 둘로 나눔). 글자·가림막은 닿으면 통째로
+  const eraseR = () => S.eraseMode === 'part' ? 9 / Math.min(S.scale, 3) + 1.5 : 6 / Math.min(S.scale, 3) + 2;
+  function eraseAt(pg, [x, y], ev) {
+    const R = eraseR();
+    if (act.part && ev) { FX.ring = { x: ev.clientX, y: ev.clientY, r: R * S.scale }; fxKick(); }
+    const list = pg.ink; if (!list.length) return;
     let hit = false;
     for (let j = list.length - 1; j >= 0; j--) {
-      const s = list[j], pad = R + s.w / 2;
-      if (s.p.some((q, n) => {
-        if (n === 0) return Math.hypot(q[0] - x, q[1] - y) < pad;
-        const a = s.p[n - 1];
-        return segDist(x, y, a[0], a[1], q[0], q[1]) < pad;
-      })) { erased.items.push({ i, s, at: j }); list.splice(j, 1); hit = true; }
+      const s = list[j];
+      if (!hitItem(s, x, y, act.part ? R - s.w / 2 : R)) continue;
+      let pieces = null;
+      if (act.part && (s.k === 'pen' || s.k === 'hl')) { pieces = splitStroke(s, x, y, R); if (!pieces) continue; }
+      list.splice(j, 1);
+      if (act.made.has(s)) { act.made.delete(s); act.adds.splice(act.adds.findIndex(o => o.s === s), 1); }
+      else act.items.push({ pg, s, at: j });
+      if (pieces && pieces.length) { list.splice(j, 0, ...pieces); for (const p of pieces) { act.made.add(p); act.adds.push({ pg, s: p }); } }
+      hit = true;
     }
-    if (hit) drawInk(i);
+    if (hit) drawPg(pg);
   }
-  function segDist(px, py, ax, ay, bx, by) {
-    const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
-    const t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
-    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  // 문지른 자리(반지름 R + 선 굵기 절반)의 점을 빼고 남은 조각들로 나눔. 점이 성긴 선(도형)은 촘촘히 채운 뒤에
+  function splitStroke(s, x, y, R) {
+    const pad = R + s.w / 2, step = Math.max(0.4, R / 3), P = s.p, dense = [P[0]];
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1], b = P[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.floor(d / step);
+      for (let k = 1; k < n; k++) { const t = k / n; dense.push([r2(a[0] + (b[0] - a[0]) * t), r2(a[1] + (b[1] - a[1]) * t), a[2] + (b[2] - a[2]) * t]); }
+      dense.push(b);
+    }
+    const keep = dense.map(q => Math.hypot(q[0] - x, q[1] - y) > pad);
+    if (keep.every(Boolean)) return null;
+    const pieces = []; let cur = [];
+    dense.forEach((q, i) => { if (keep[i]) cur.push(q); else { if (cur.length > 1) pieces.push(cur); cur = []; } });
+    if (cur.length > 1) pieces.push(cur);
+    return pieces.map(p => Object.assign({}, s, { p }));
   }
   function endErase() {
-    if (erased && erased.items.length) { S.hist.push({ t: 'erase', items: erased.items }); S.redo = []; changed(); }
-    erased = null;
+    const a = act; act = null;
+    FX.ring = null; fxKick();
+    if (a && (a.items.length || a.adds.length)) record({ t: 'erase', items: a.items, adds: a.adds });
   }
 
+  // 가림막 만들기: 끌어서 상자. 톡 누르면 있던 가림막 열기·닫기
+  function rectOf(p0, p1, pg) {
+    const x = Math.max(0, Math.min(p0[0], p1[0])), y = Math.max(0, Math.min(p0[1], p1[1]));
+    const x1 = Math.min(pg.w, Math.max(p0[0], p1[0])), y1 = Math.min(pg.h, Math.max(p0[1], p1[1]));
+    return [x, y, x1 - x, y1 - y];
+  }
+  function commitCover(a) {
+    act = null; a.el.remove();
+    const [x, y, w, h] = rectOf(a.p0, a.p1, a.pg);
+    if (w * S.scale < 14 || h * S.scale < 14) { if (!toggleCoverAt(a.pg, a.p0)) toast('답이 있는 곳을 끌어서 상자를 그리면 가려져요.'); return; }
+    const s = { k: 'cover', x: r2(x), y: r2(y), cw: r2(w), ch: r2(h) };
+    a.pg.ink.push(s);
+    record({ t: 'add', items: [{ pg: a.pg, s }] });
+    renderCovers(a.pg);
+  }
+
+  // 채점 도장: 톡 누른 자리에 ○ ✓ ✗ (빨간 선이라 지우개·되돌리기도 그대로 됨)
+  function placeStamp(pg, [x, y]) {
+    const r = STAMP_R[S.size], w = STAMP_W[S.size], mk = p => ({ k: 'pen', c: STAMP_C, w, sh: 1, p: p.map(q => [r2(q[0]), r2(q[1]), 0.5]) });
+    let list;
+    if (S.stamp === 'o') list = [mk(Array.from({ length: 49 }, (_, i) => { const t = i / 48 * Math.PI * 2; return [x + r * Math.cos(t), y + r * Math.sin(t)]; }))];
+    else if (S.stamp === 'v') list = [mk([[x - r * 0.85, y - r * 0.05], [x - r * 0.25, y + r * 0.65], [x + r * 0.95, y - r * 0.85]])];
+    else list = [mk([[x - r * 0.7, y - r * 0.7], [x + r * 0.7, y + r * 0.7]]), mk([[x + r * 0.7, y - r * 0.7], [x - r * 0.7, y + r * 0.7]])];
+    pg.ink.push(...list);
+    record({ t: 'add', items: list.map(s => ({ pg, s })) });
+    drawPg(pg);
+  }
+
+  // ════════════════ 올가미 선택: 둘러 잡고 옮기기·복제·지우기 ════════════════
+  let SEL = null;   // { pg, set }
+  function inPoly(x, y, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  }
+  function commitLasso(a) {
+    if (a.raf) cancelAnimationFrame(a.raf);
+    liveCanvas.remove(); act = null;
+    if (a.pts.length < 4) return;
+    const set = new Set();
+    for (const s of a.pg.ink) {
+      if (s.k === 'cover' || s.k === 'text') { const [x0, y0, x1, y1] = bounds(s); if (inPoly((x0 + x1) / 2, (y0 + y1) / 2, a.pts)) set.add(s); }
+      else if (s.p.filter(q => inPoly(q[0], q[1], a.pts)).length >= s.p.length / 2) set.add(s);
+    }
+    if (!set.size) { toast('둘러싼 안에 필기가 없어요.'); return; }
+    SEL = { pg: a.pg, set };
+    showSel();
+  }
+  function selBox() {
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const s of SEL.set) { const [x0, y0, x1, y1] = bounds(s); a = Math.min(a, x0); b = Math.min(b, y0); c = Math.max(c, x1); d = Math.max(d, y1); }
+    const pad = 6 / S.scale;
+    return [a - pad, b - pad, c + pad, d + pad];
+  }
+  const inBox = (bx, [x, y]) => x >= bx[0] && x <= bx[2] && y >= bx[1] && y <= bx[3];
+  function showSel(dx = 0, dy = 0) {
+    const old = document.querySelector('.selbox'); if (old) old.remove();
+    if (!SEL) { $('#selbar').hidden = true; return; }
+    const pg = SEL.pg, [a, b, c, d] = selBox(), el = document.createElement('div');
+    el.className = 'selbox';
+    Object.assign(el.style, { left: (a + dx) / pg.w * 100 + '%', top: (b + dy) / pg.h * 100 + '%', width: (c - a) / pg.w * 100 + '%', height: (d - b) / pg.h * 100 + '%' });
+    pg.el.appendChild(el);
+    $('#sel-n').textContent = `${SEL.set.size}개 골랐어요 · 끌어서 옮겨요`;
+    $('#selbar').hidden = false;
+  }
+  function clearSel() {
+    if (!SEL) return;
+    SEL = null; showSel();
+  }
+  function commitMove(a) {
+    if (a.raf) cancelAnimationFrame(a.raf);
+    act = null;
+    if (Math.abs(a.dx) + Math.abs(a.dy) > 0.3) {
+      const items = [...SEL.set].map(s => ({ pg: a.pg, s }));
+      for (const it of items) translate(it.s, a.dx, a.dy);
+      record({ t: 'move', items, dx: a.dx, dy: a.dy });
+    }
+    drawPg(a.pg); showSel();
+  }
+  function selDelete() {
+    const pg = SEL.pg, items = [];
+    for (let j = pg.ink.length - 1; j >= 0; j--) if (SEL.set.has(pg.ink[j])) { items.push({ pg, s: pg.ink[j], at: j }); pg.ink.splice(j, 1); }
+    clearSel();
+    record({ t: 'erase', items });
+    drawPg(pg); toast(`${items.length}개를 지웠어요.`);
+  }
+  function selDup() {
+    const pg = SEL.pg, d = 14, copies = [...SEL.set].map(s => { const c = JSON.parse(JSON.stringify(s)); translate(c, d, d); return c; });
+    pg.ink.push(...copies);
+    record({ t: 'add', items: copies.map(s => ({ pg, s })) });
+    SEL = { pg, set: new Set(copies) };
+    drawPg(pg); showSel();
+  }
+
+  // ════════════════ 되돌리기 ════════════════
+  // 기록은 쪽 객체를 가리킴 (빈 쪽을 넣고 빼서 쪽 번호가 바뀌어도 맞음)
+  function record(h) { S.hist.push(h); S.redo = []; changed(); }
   function undo() {
     const h = S.hist.pop(); if (!h) return;
-    applyHist(h, true); S.redo.push(h); changed();
+    clearSel(); applyHist(h, true); S.redo.push(h); changed();
   }
   function redo() {
     const h = S.redo.pop(); if (!h) return;
-    applyHist(h, false); S.hist.push(h); changed();
+    clearSel(); applyHist(h, false); S.hist.push(h); changed();
   }
   function applyHist(h, back) {
     const touched = new Set();
-    if (h.t === 'add') {
-      const list = S.ink[h.i] = S.ink[h.i] || [];
-      if (back) { const j = list.lastIndexOf(h.s); if (j >= 0) list.splice(j, 1); } else list.push(h.s);
-      touched.add(h.i);
-    } else {
-      // 지우기·쪽 지우기: 되돌릴 때는 원래 자리로
-      const items = back ? h.items.slice().reverse() : h.items;
-      for (const it of items) {
-        const list = S.ink[it.i] = S.ink[it.i] || [];
-        if (back) list.splice(Math.min(it.at, list.length), 0, it.s);
-        else { const j = list.indexOf(it.s); if (j >= 0) list.splice(j, 1); }
-        touched.add(it.i);
-      }
+    const rm = it => { const j = it.pg.ink.lastIndexOf(it.s); if (j >= 0) it.pg.ink.splice(j, 1); touched.add(it.pg); };
+    const add = it => { it.pg.ink.push(it.s); touched.add(it.pg); };
+    if (h.t === 'add') h.items.forEach(back ? rm : add);
+    else if (h.t === 'erase') {
+      // 지우기·쪽 지우기·부분 지우기: 되돌릴 때는 조각을 빼고 원래 선을 원래 자리로
+      if (back) {
+        (h.adds || []).forEach(rm);
+        for (const it of h.items.slice().reverse()) { it.pg.ink.splice(Math.min(it.at, it.pg.ink.length), 0, it.s); touched.add(it.pg); }
+      } else { h.items.forEach(rm); (h.adds || []).forEach(add); }
+    } else if (h.t === 'move') {
+      const k = back ? -1 : 1;
+      for (const it of h.items) { translate(it.s, k * h.dx, k * h.dy); touched.add(it.pg); }
+    } else if (h.t === 'text') {
+      Object.assign(h.s, back ? h.before : h.after); touched.add(h.pg);
+    } else if (h.t === 'page') {
+      if (h.ins !== back) insertPage(h.at, h.pg); else removePage(h.pg);
+      goPage(S.pages.indexOf(h.pg) >= 0 ? S.pages.indexOf(h.pg) : Math.min(h.at, S.pages.length - 1));
+      return;
     }
-    for (const i of touched) if (S.pages[i]) drawInk(i);
-    const first = [...touched][0];
-    if (first != null && !onScreen(first)) goPage(first);
+    for (const pg of touched) drawPg(pg);
+    const first = S.pages.indexOf([...touched][0]);
+    if (first >= 0 && !onScreen(first)) goPage(first);
   }
-  function clearPage(i) {
-    const list = S.ink[i] || []; if (!list.length) return;
-    const items = list.map((s, at) => ({ i, s, at })).reverse();
-    S.ink[i] = [];
-    S.hist.push({ t: 'erase', items }); S.redo = [];
-    drawInk(i); changed();
+  function clearPage(pg) {
+    if (!pg.ink.length) return;
+    const items = pg.ink.map((s, at) => ({ pg, s, at })).reverse();
+    pg.ink = [];
+    record({ t: 'erase', items });
+    drawPg(pg);
+  }
+
+  // ════════════════ 빈 쪽 넣기·빼기 ════════════════
+  function insertPage(at, pg) {
+    S.pages.splice(at, 0, pg);
+    pagesEl.insertBefore(makePageEl(pg), S.pages[at + 1] ? S.pages[at + 1].el : null);
+    renumber(); layout(); updateVisible();
+  }
+  function removePage(pg) {
+    const i = S.pages.indexOf(pg); if (i < 0) return;
+    S.pages.splice(i, 1); pg.el.remove(); queue.delete(pg);
+    if (S.cur >= S.pages.length) S.cur = S.pages.length - 1;
+    renumber(); layout(); updateVisible();
+  }
+  function addBlank(kind) {
+    const ref = S.pages[S.cur], at = S.cur + 1;
+    const pg = newPage({ blank: kind, w: r2(ref.w), h: r2(ref.h) });
+    insertPage(at, pg);
+    record({ t: 'page', ins: true, at, pg });
+    goPage(at);
+    toast(`${at + 1}쪽에 ${PATTERN[kind]}를 넣었어요. 보내기·저장한 PDF에도 들어가요.`);
+  }
+  function removeBlank(pg) {
+    const at = S.pages.indexOf(pg);
+    removePage(pg);
+    record({ t: 'page', ins: false, at, pg });
+    goPage(Math.min(at, S.pages.length - 1));
+    toast('넣은 쪽을 뺐어요. (되돌리기로 살릴 수 있어요)');
   }
 
   // 저장: 바뀌면 잠시 뒤 한 번에
@@ -696,13 +1265,15 @@
   }
   async function flushInk() {
     clearTimeout(saveTimer); saveTimer = null;
-    if (!S.meta) return;
+    if (!S.meta || !S.pages.length) return;
     const pages = {};
     let n = 0;
-    for (const [i, list] of Object.entries(S.ink)) if (list && list.length) { pages[i] = list; n += list.length; }
+    S.pages.forEach((pg, i) => { if (pg.ink.length) { pages[i] = pg.ink; n += pg.ink.length; } });
+    const rec = { id: S.meta.id, pages, updated: Date.now() };
+    if (S.pages.some(pg => pg.blank)) rec.order = S.pages.map(pg => pg.blank ? { b: pg.blank, w: pg.w, h: pg.h } : { s: pg.src });
     try {
-      await DB.put('ink', { id: S.meta.id, pages, updated: Date.now() });
-      if ((S.meta.inkCount || 0) !== n) { S.meta.inkCount = n; await DB.put('meta', S.meta); }
+      await DB.put('ink', rec);
+      if ((S.meta.inkCount || 0) !== n || S.meta.pages !== S.pages.length) { S.meta.inkCount = n; S.meta.pages = S.pages.length; await DB.put('meta', S.meta); }
     } catch (e) { toast('필기를 저장하지 못했어요. 저장 공간을 확인해 주세요.', 4000); }
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && S.meta) { flushInk(); S.meta.lastPage = S.cur; DB.put('meta', S.meta).catch(() => {}); } });
@@ -745,43 +1316,73 @@
   }
 
   // ════════════════ 도구 막대 ════════════════
+  const tb = (a, icon, label, pressed, showLabel = true) => `<button class="tb" type="button" data-a="${a}"${pressed == null ? '' : ` aria-pressed="${!!pressed}"`} aria-label="${label}" title="${label}">${icon}${showLabel ? `<span class="lbl">${label}</span>` : ''}</button>`;
   function penButtons() {
     return PENS.map((p, n) => `<button class="tb" type="button" data-pen="${n}" aria-pressed="${S.tool === 'draw' && S.pen === n}" aria-label="${p.label}" title="${p.label}">
       <span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c}"></span></button>`).join('');
   }
+  // 즐겨찾기 펜 3칸: 누르면 그 색·굵기로, 길게 누르면 지금 펜을 저장
+  function favButtons() {
+    return FAV.map((f, n) => {
+      const p = PENS[f.pen], d = [9, 13, 18][f.size];
+      return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pen === f.pen && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${p.label} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1} · 길게 누르면 지금 펜 저장">
+        <span class="fv"><span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
+    }).join('');
+  }
+  function stampButtons(showLabel) {
+    return Object.entries(STAMPS).map(([k, label]) => `<button class="tb stamp" type="button" data-stamp="${k}" aria-pressed="${S.tool === 'stamp' && S.stamp === k}" aria-label="${label} 도장" title="${label} 도장"><span class="glyph">${{ o: '○', v: '✓', x: '✗' }[k]}</span>${showLabel && k === 'o' ? '<span class="lbl">도장</span>' : ''}</button>`).join('');
+  }
   function renderTools() {
-    const sheet = S.meta && S.meta.kind === 'sheet';
+    const kind = S.meta && S.meta.kind, sheet = kind === 'sheet', grade = kind === 'grade';
     const fd = fingerDraws();
     const sizeH = [2, 4, 7][S.size];
+    const eraseLbl = S.eraseMode === 'part' ? '부분 지우개' : '지우개';
     $('#tools').innerHTML = `
+      ${favButtons()}
+      <span class="sep"></span>
       ${penButtons()}
-      <button class="tb" type="button" data-a="erase" aria-pressed="${S.tool === 'erase'}">${I.erase}<span class="lbl">지우개</span></button>
+      ${tb('erase', I.erase, eraseLbl, S.tool === 'erase')}
       <button class="tb" type="button" data-a="size" title="굵기">${`<span class="size-line" style="height:${sizeH}px"></span>`}<span class="lbl">${SIZE_NAMES[S.size]}</span></button>
       <span class="sep"></span>
-      <button class="tb" type="button" data-a="undo" aria-label="되돌리기">${I.undo}</button>
-      <button class="tb" type="button" data-a="redo" aria-label="다시 하기">${I.redo}</button>
+      ${tb('laser', I.laser, '레이저', S.tool === 'laser')}
+      ${tb('cover', I.cover, '가림막', S.tool === 'cover')}
+      ${tb('text', I.text, '글자', S.tool === 'text')}
+      ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso')}
+      ${grade ? stampButtons(true) : ''}
+      <span class="sep"></span>
+      ${tb('undo', I.undo, '되돌리기', null, false)}
+      ${tb('redo', I.redo, '다시 하기', null, false)}
       <span class="sep"></span>
       <button class="tb" type="button" data-a="finger" aria-pressed="${fd}" title="손가락으로 쓰기">${fd ? I.finger : I.hand}<span class="lbl">${fd ? '손가락: 쓰기' : '손가락: 이동'}</span></button>
-      <button class="tb" type="button" data-a="zoom-out" aria-label="축소">${I.minus}</button>
-      <button class="tb" type="button" data-a="fit" aria-label="폭 맞춤">${I.fit}</button>
-      <button class="tb" type="button" data-a="zoom-in" aria-label="확대">${I.plus}</button>
-      ${FS_OK ? `<button class="tb" type="button" data-a="fullscreen" aria-pressed="${!!fsElement()}">${I.full}<span class="lbl">전체 화면</span></button>` : ''}
+      ${tb('zoom-out', I.minus, '축소', null, false)}
+      ${tb('fit', I.fit, '폭 맞춤', null, false)}
+      ${tb('zoom-in', I.plus, '확대', null, false)}
+      ${FS_OK ? tb('fullscreen', I.full, '전체 화면', !!fsElement()) : ''}
       <span class="sep"></span>
-      <button class="tb" type="button" data-a="thumbs">${I.grid}<span class="lbl">쪽 목록</span></button>
-      <button class="tb" type="button" data-a="clear-page">${I.trash}<span class="lbl">이 쪽 지우기</span></button>`;
+      ${tb('thumbs', I.grid, '쪽 목록')}
+      ${tb('timer', I.timer, '타이머')}
+      ${tb('more', I.more, '더보기')}`;
     // 자주 찾는 [수업 화면]·[보내기]는 위 줄에 늘 보이게
+    const sendIcon = sheet || grade ? I.send : I.save, sendLbl = sheet ? '선생님께 보내기' : grade ? '채점 돌려주기' : 'PDF로 저장';
     $('#bar-actions').innerHTML = `
       <button class="tb" type="button" data-a="present">${I.board}<span class="lbl">수업 화면</span></button>
-      <button class="tb primary" type="button" data-a="send">${sheet ? I.send : I.save}<span class="lbl">${sheet ? '선생님께 보내기' : 'PDF로 저장'}</span></button>`;
+      <button class="tb primary" type="button" data-a="send">${sendIcon}<span class="lbl">${sendLbl}</span></button>`;
     $('#pbar').innerHTML = `
-      <button class="tb" type="button" data-a="prev" aria-label="이전 쪽">${I.prev}</button>
+      ${tb('prev', I.prev, '이전 쪽', null, false)}
       <span class="pageno"></span>
-      <button class="tb" type="button" data-a="next" aria-label="다음 쪽">${I.next}</button>
+      ${tb('next', I.next, '다음 쪽', null, false)}
+      <span class="sep"></span>
+      ${favButtons()}
       <span class="sep"></span>
       ${penButtons()}
-      <button class="tb" type="button" data-a="erase" aria-pressed="${S.tool === 'erase'}" aria-label="지우개">${I.erase}</button>
-      <button class="tb" type="button" data-a="undo" aria-label="되돌리기">${I.undo}</button>
-      <button class="tb" type="button" data-a="clear-page" aria-label="이 쪽 지우기">${I.trash}</button>
+      ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
+      ${tb('laser', I.laser, '레이저', S.tool === 'laser', false)}
+      ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
+      ${grade ? stampButtons(false) : ''}
+      ${tb('undo', I.undo, '되돌리기', null, false)}
+      <span class="sep"></span>
+      ${tb('timer', I.timer, '타이머', null, false)}
+      ${tb('more', I.more, '더보기', null, false)}
       <span class="sep"></span>
       <button class="tb" type="button" data-a="exit-present">${I.close}<span class="lbl">끝내기</span></button>`;
     updateUndo(); updatePageNo();
@@ -790,15 +1391,49 @@
     viewer.querySelectorAll('[data-a="undo"]').forEach(b => { b.disabled = !S.hist.length; });
     viewer.querySelectorAll('[data-a="redo"]').forEach(b => { b.disabled = !S.redo.length; });
   }
+  const TOOL_TIPS = {
+    laser: '레이저: 펜으로 가리키면 빨간 꼬리가 잠깐 보였다 사라져요. 필기는 남지 않아요.',
+    cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
+    text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
+    lasso: '올가미: 필기를 빙 둘러 그려서 골라요. 고른 것은 끌어서 옮기거나 복제·지울 수 있어요.',
+  };
+  function setTool(t) {
+    if (S.tool !== t && TOOL_TIPS[t]) toast(TOOL_TIPS[t], 3600);
+    if (t !== 'lasso') clearSel();
+    S.tool = t; saveSettings(); renderTools();
+  }
+  let favHold = 0, favLong = false;
+  viewer.addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-fav]'); if (!b) return;
+    favLong = false; clearTimeout(favHold);
+    favHold = setTimeout(() => { favLong = true; saveFav(Number(b.dataset.fav)); }, 600);
+  });
+  for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, () => clearTimeout(favHold));
+  function saveFav(n) {
+    if (S.tool !== 'draw') { toast('먼저 펜 색과 굵기를 고른 뒤, 즐겨찾기 칸을 길게 누르세요.'); return; }
+    FAV[n] = { pen: S.pen, size: S.size }; ls.set(K.fav, FAV);
+    renderTools();
+    toast(`즐겨찾기 ${n + 1}번에 ‘${PENS[S.pen].label} · ${SIZE_NAMES[S.size]}’을 저장했어요.`);
+  }
+  viewer.addEventListener('contextmenu', e => { if (e.target.closest('[data-fav]')) e.preventDefault(); });
+
   let clearArmed = false;
   viewer.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !viewer.contains(b)) return;
-    if (b.dataset.pen) { S.pen = Number(b.dataset.pen); S.tool = 'draw'; saveSettings(); renderTools(); return; }
+    if (b.dataset.fav) {
+      if (favLong) { favLong = false; return; }
+      const f = FAV[Number(b.dataset.fav)]; S.pen = f.pen; S.size = f.size; setTool('draw'); return;
+    }
+    if (b.dataset.pen) { S.pen = Number(b.dataset.pen); setTool('draw'); return; }
+    if (b.dataset.stamp) { S.stamp = b.dataset.stamp; if (S.tool !== 'stamp') toast('채점할 곳을 톡 누르면 도장이 찍혀요. 크기는 [굵기]로 바꿔요.'); setTool('stamp'); return; }
     const a = b.dataset.a;
-    if (a !== 'clear-page' && clearArmed) { clearArmed = false; }
     switch (a) {
       case 'home': closeDoc(); break;
-      case 'erase': S.tool = 'erase'; saveSettings(); renderTools(); break;
+      case 'erase':
+        if (S.tool === 'erase') { S.eraseMode = S.eraseMode === 'part' ? 'stroke' : 'part'; toast(S.eraseMode === 'part' ? '부분 지우개: 문지른 부분만 지워요. (한 번 더 누르면 선 통째로)' : '지우개: 닿은 선을 통째로 지워요. (한 번 더 누르면 부분 지우개)', 3200); saveSettings(); renderTools(); }
+        else setTool('erase');
+        break;
+      case 'laser': case 'cover': case 'text': case 'lasso': setTool(a); break;
       case 'size': S.size = (S.size + 1) % 3; saveSettings(); renderTools(); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
@@ -807,10 +1442,13 @@
       case 'zoom-out': setZoom(S.zoom / 1.25); break;
       case 'fit': { const i = S.cur; S.zoom = 1; layout(); goPage(i); break; }
       case 'thumbs': openThumbs(); break;
-      case 'clear-page':
-        if (!(S.ink[S.cur] || []).length) { toast('이 쪽에는 지울 필기가 없어요.'); break; }
-        if (!clearArmed) { clearArmed = true; toast(`한 번 더 누르면 ${S.cur + 1}쪽 필기를 모두 지워요. (되돌리기로 살릴 수 있어요)`, 3000); break; }
-        clearArmed = false; clearPage(S.cur); toast(`${S.cur + 1}쪽 필기를 지웠어요.`); break;
+      case 'timer': openTimer(); break;
+      case 'timer-toggle': timerToggle(); break;
+      case 'timer-close': stopTimer(); break;
+      case 'more': openMore(); break;
+      case 'sel-dup': if (SEL) selDup(); break;
+      case 'sel-del': if (SEL) selDelete(); break;
+      case 'sel-done': clearSel(); break;
       case 'fullscreen': fsElement() ? exitFullscreen() : enterFullscreen(); break;
       case 'present': enterPresent(); break;
       case 'exit-present': exitPresent(); break;
@@ -820,9 +1458,11 @@
     }
   });
   document.addEventListener('keydown', e => {
-    if (S.view !== 'doc' || !$('#modal').hidden || e.target.tagName === 'INPUT') return;
+    if (S.view !== 'doc' || !$('#modal').hidden || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+    if (SEL && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); selDelete(); return; }
+    if (SEL && e.key === 'Escape') { clearSel(); return; }
     if (S.present) {
       if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); goPage(S.cur + 1); }
       else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); goPage(S.cur - 1); }
@@ -830,6 +1470,137 @@
     } else if (e.key === 'PageDown') { e.preventDefault(); goPage(S.cur + 1, true); }
     else if (e.key === 'PageUp') { e.preventDefault(); goPage(S.cur - 1, true); }
   });
+
+  // ════════════════ 더보기: 빈 쪽 넣기·빼기, 도형 맞춤, 지우개 방식, 쪽 지우기 ════════════════
+  function openMore() {
+    const pg = S.pages[S.cur], n = S.cur + 1;
+    let armed = '';
+    const html = () => `
+      <h2>더보기</h2>
+      <p class="mh">빈 쪽 넣기 <small>${n}쪽 뒤에 들어가요</small></p>
+      <div class="grid-btns">${Object.entries(PATTERN).map(([k, v]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">${v}</button>`).join('')}</div>
+      ${pg.blank ? `<button class="btn ghost wide${armed === 'rm' ? ' armed' : ''}" type="button" data-m="rm">${armed === 'rm' ? '한 번 더 누르면 뺄게요' : `이 넣은 쪽 빼기 (${n}쪽)`}</button>` : ''}
+      <p class="mh">쓰기</p>
+      <button class="btn ghost wide" type="button" data-m="snap">도형 맞춤: <b>${S.snap ? '켜짐' : '꺼짐'}</b></button>
+      <p class="hint">선을 긋고 펜을 떼지 않은 채 잠깐 멈추면 반듯한 직선·원·삼각형·사각형으로 바뀌어요.</p>
+      <button class="btn ghost wide" type="button" data-m="emode">지우개: <b>${S.eraseMode === 'part' ? '문지른 부분만' : '선 통째로'}</b></button>
+      <button class="btn ghost wide${armed === 'clear' ? ' armed' : ''}" type="button" data-m="clear">${armed === 'clear' ? `한 번 더 누르면 ${n}쪽 필기를 모두 지워요` : `이 쪽 필기 모두 지우기 (${n}쪽)`}</button>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button></div>`;
+    const fn = b => {
+      const m = b.dataset.m;
+      if (m === 'add') { closeModal(); addBlank(b.dataset.v); return; }
+      if (m === 'rm') { if (armed !== 'rm') { armed = 'rm'; showModal(html(), fn); return; } closeModal(); removeBlank(pg); return; }
+      if (m === 'snap') { S.snap = !S.snap; saveSettings(); armed = ''; showModal(html(), fn); return; }
+      if (m === 'emode') { S.eraseMode = S.eraseMode === 'part' ? 'stroke' : 'part'; saveSettings(); renderTools(); armed = ''; showModal(html(), fn); return; }
+      if (m === 'clear') {
+        if (!pg.ink.length) { closeModal(); toast('이 쪽에는 지울 필기가 없어요.'); return; }
+        if (armed !== 'clear') { armed = 'clear'; showModal(html(), fn); return; }
+        closeModal(); clearPage(pg); toast(`${n}쪽 필기를 지웠어요. (되돌리기로 살릴 수 있어요)`);
+      }
+    };
+    showModal(html(), fn);
+  }
+
+  // ════════════════ 글자 넣기·고치기 ════════════════
+  function openText(pg, pt) {
+    const item = (() => { for (let j = pg.ink.length - 1; j >= 0; j--) { const s = pg.ink[j]; if (s.k === 'text' && hitItem(s, pt[0], pt[1], 4 / S.scale)) return s; } return null; })();
+    const pen = PENS[S.pen];
+    let fsI = item ? Math.max(0, TEXT_SIZES.indexOf(item.fs)) : S.size;
+    const color = item ? item.c : pen.k === 'pen' ? pen.c : PENS[0].c;
+    const html = () => `
+      <h2>${item ? '글자 고치기' : '글자 넣기'}</h2>
+      <textarea id="tx" rows="3" placeholder="여기에 적어요 (줄 바꿈 가능)">${esc(item ? item.t : ($('#tx') ? $('#tx').value : ''))}</textarea>
+      <div class="seg">${['작게', '보통', '크게'].map((nm, k) => `<button class="tb" type="button" data-m="fs" data-v="${k}" aria-pressed="${k === fsI}">${nm}</button>`).join('')}
+        <span class="swatch" style="background:${color}" title="글자 색 (펜 색)"></span></div>
+      <div class="row">${item ? '<button class="btn ghost" type="button" data-m="del">지우기</button>' : ''}<button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">${item ? '고치기' : '넣기'}</button></div>`;
+    showModal(html(), b => {
+      const m = b.dataset.m, ta = $('#tx');
+      if (m === 'fs') { fsI = Number(b.dataset.v); $('#modal-card').querySelectorAll('[data-m="fs"]').forEach(x => x.setAttribute('aria-pressed', String(Number(x.dataset.v) === fsI))); ta.focus({ preventScroll: true }); return; }
+      if (m === 'del' && item) {
+        const at = pg.ink.indexOf(item); if (at >= 0) pg.ink.splice(at, 1);
+        record({ t: 'erase', items: [{ pg, s: item, at }] }); drawPg(pg); closeModal(); return;
+      }
+      if (m !== 'ok') return;
+      const t = ta.value.replace(/\s+$/, '');
+      if (!t) { if (item) return; closeModal(); return; }
+      if (item) {
+        const before = { t: item.t, fs: item.fs, tw: item.tw, th: item.th };
+        Object.assign(item, { t, fs: TEXT_SIZES[fsI] }); measureText(item);
+        record({ t: 'text', pg, s: item, before, after: { t: item.t, fs: item.fs, tw: item.tw, th: item.th } });
+      } else {
+        const fs = TEXT_SIZES[fsI];
+        const s = measureText({ k: 'text', x: r2(pt[0]), y: r2(Math.max(0, pt[1] - fs * 0.6)), t, c: color, fs });
+        pg.ink.push(s);
+        record({ t: 'add', items: [{ pg, s }] });
+      }
+      drawPg(pg); closeModal();
+    });
+    const ta = $('#tx'); ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+
+  // ════════════════ 타이머 ════════════════
+  const T = { total: 0, end: 0, left: 0, done: false, iv: 0, ac: null };
+  const fmtT = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+  function openTimer() {
+    const on = !!(T.end || T.left) && !T.done;
+    showModal(`
+      <h2>타이머</h2>
+      <p>${on ? '타이머가 돌고 있어요. 새 시간을 고르면 다시 시작해요.' : '시간을 고르면 바로 시작해요. 화면 오른쪽 위에 보여요.'}</p>
+      <div class="grid-btns">${[1, 2, 3, 5, 10, 15, 20, 30].map(m => `<button class="btn ghost" type="button" data-m="go" data-v="${m * 60}">${m}분</button>`).join('')}</div>
+      <label for="tm-in">직접 적기 (분)</label>
+      <div class="inrow"><input id="tm-in" type="number" min="1" max="180" step="1" inputmode="numeric" placeholder="예: 7"><button class="btn" type="button" data-m="go-in">시작</button></div>
+      <div class="row">${on ? '<button class="btn ghost" type="button" data-m="stop">타이머 끄기</button>' : ''}<button class="btn ghost" type="button" data-m="close">닫기</button></div>`, b => {
+      const m = b.dataset.m;
+      if (m === 'stop') { stopTimer(); closeModal(); return; }
+      let sec = 0;
+      if (m === 'go') sec = Number(b.dataset.v);
+      if (m === 'go-in') { const v = Number($('#tm-in').value); if (!(v > 0 && v <= 180)) { $('#tm-in').focus({ preventScroll: true }); return; } sec = Math.round(v * 60); }
+      if (sec) { closeModal(); startTimer(sec); }
+    });
+  }
+  function startTimer(sec) {
+    // 소리는 누른 순간에 준비해야 나중에 울릴 수 있음 (아이패드)
+    try { T.ac = T.ac || new (window.AudioContext || window.webkitAudioContext)(); if (T.ac.resume) T.ac.resume(); } catch (e) { T.ac = null; }
+    Object.assign(T, { total: sec * 1000, end: performance.now() + sec * 1000, left: 0, done: false });
+    clearInterval(T.iv); T.iv = setInterval(tickTimer, 250);
+    $('#timer').hidden = false; tickTimer();
+  }
+  function tickTimer() {
+    const el = $('#timer'), tt = el.querySelector('.tt');
+    const left = T.end ? T.end - performance.now() : T.left;
+    el.classList.toggle('paused', !T.end && !T.done);
+    if (T.end && left <= 0) {
+      T.end = 0; T.done = true; clearInterval(T.iv);
+      el.classList.add('done'); tt.textContent = '시간 끝!';
+      beep();
+      return;
+    }
+    el.classList.remove('done');
+    tt.textContent = fmtT(left);
+  }
+  function timerToggle() {
+    if (T.done) { stopTimer(); return; }
+    if (T.end) { T.left = T.end - performance.now(); T.end = 0; clearInterval(T.iv); }
+    else if (T.left) { T.end = performance.now() + T.left; T.left = 0; clearInterval(T.iv); T.iv = setInterval(tickTimer, 250); }
+    tickTimer();
+  }
+  function stopTimer() {
+    clearInterval(T.iv); Object.assign(T, { total: 0, end: 0, left: 0, done: false });
+    const el = $('#timer'); el.hidden = true; el.classList.remove('done', 'paused');
+  }
+  function beep() {
+    if (navigator.vibrate) try { navigator.vibrate([200, 120, 200]); } catch (e) {}
+    const ac = T.ac; if (!ac) return;
+    try {
+      const t0 = ac.currentTime + 0.05;
+      for (let n = 0; n < 3; n++) {
+        const o = ac.createOscillator(), g = ac.createGain(), t = t0 + n * 0.38;
+        o.frequency.value = 880; o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+        o.start(t); o.stop(t + 0.27);
+      }
+    } catch (e) {}
+  }
 
   // ════════════════ 전체 화면 ════════════════
   // 시계·배터리 줄까지 가리기. 아이패드 사파리·갤럭시탭 크롬·PC는 되고, 아이폰은 기기가 허용하지 않음 → 버튼을 아예 안 보여 줌
@@ -857,6 +1628,7 @@
   // ════════════════ 수업 화면 ════════════════
   function enterPresent() {
     S.present = true; S.zoomBefore = S.zoom; S.zoom = 1;
+    clearSel();
     viewer.classList.add('present'); document.body.classList.add('presenting');
     // 이미 전체 화면이면 그대로, 아니면 수업 화면이 켜고 끝날 때 함께 끔
     S.fsByPresent = FS_OK && !fsElement();
@@ -877,7 +1649,7 @@
   function openThumbs() {
     const box = $('#thumbs'), grid = $('#thumbs-grid');
     grid.innerHTML = S.pages.map((pg, i) => `<button class="thumb${i === S.cur ? ' cur' : ''}" type="button" data-go="${i}">
-      <span class="tp" style="aspect-ratio:${pg.w} / ${pg.h}"></span><span class="${(S.ink[i] || []).length ? 'has-ink' : ''}">${i + 1}${(S.ink[i] || []).length ? ' ✎' : ''}</span></button>`).join('');
+      <span class="tp" style="aspect-ratio:${pg.w} / ${pg.h}"></span><span class="${pg.ink.length ? 'has-ink' : ''}">${i + 1}${pg.blank ? ' · 넣은 쪽' : ''}${pg.ink.length ? ' ✎' : ''}</span></button>`).join('');
     box.hidden = false;
     if (thumbObs) thumbObs.disconnect();
     thumbObs = new IntersectionObserver(entries => entries.forEach(en => { if (en.isIntersecting) { thumbObs.unobserve(en.target); drawThumb(en.target); } }), { root: box, rootMargin: '200px' });
@@ -887,13 +1659,16 @@
   async function drawThumb(btn) {
     const i = Number(btn.dataset.go), pg = S.pages[i], tp = btn.querySelector('.tp');
     try {
-      const page = await S.pdf.getPage(i + 1);
       const w = 240, k = w / pg.w;
-      const vp = page.getViewport({ scale: k });
-      const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
-      await page.render({ canvasContext: c.getContext('2d', { alpha: false }), viewport: vp }).promise;
+      const c = document.createElement('canvas');
+      if (pg.blank) { c.width = Math.floor(pg.w * k); c.height = Math.floor(pg.h * k); paintPattern(c.getContext('2d', { alpha: false }), pg, k); }
+      else {
+        const page = await S.pdf.getPage(pg.src + 1), vp = page.getViewport({ scale: k });
+        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+        await page.render({ canvasContext: c.getContext('2d', { alpha: false }), viewport: vp }).promise;
+      }
       const ctx = c.getContext('2d');
-      for (const s of S.ink[i] || []) paintStroke(ctx, s, k);
+      for (const s of pg.ink) paintItem(ctx, s, k);
       tp.appendChild(c);
     } catch (e) {}
   }
@@ -904,7 +1679,8 @@
   });
 
   // ════════════════ PDF로 내보내기 ════════════════
-  // 원본 PDF에 필기를 선(벡터)으로 덧그림 → 글자는 그대로 선명하고 파일도 작음
+  // 원본 PDF에 필기를 선(벡터)으로 덧그림 → 글자는 그대로 선명하고 파일도 작음. 넣은 빈 쪽은 그 자리에 새 쪽으로
+  // 넣은 글자는 그림으로(한글 글꼴을 PDF에 넣지 않아도 되게). 가림막은 수업용이라 넣지 않음
   // 원본이 암호 등으로 고칠 수 없는 PDF면 쪽마다 그림으로 만들어 새 PDF로
   async function exportPdf() {
     await flushInk();
@@ -913,26 +1689,50 @@
     const rec = await DB.get('pdf', S.meta.id);
     const hex = c => rgb(parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255);
     const vps = [];
-    for (let i = 0; i < S.pages.length; i++) vps[i] = S.pages[i].vp || (await S.pdf.getPage(i + 1)).getViewport({ scale: 1 });
+    for (const pg of S.pages) vps.push(pg.blank ? { width: pg.w, height: pg.h, convertToPdfPoint: (x, y) => [x, pg.h - y] } : pg.vp || (await S.pdf.getPage(pg.src + 1)).getViewport({ scale: 1 }));
+    const textPng = async s => {
+      const k = 4, c = document.createElement('canvas');
+      c.width = Math.ceil(s.tw * k); c.height = Math.ceil(s.th * k);
+      paintText(c.getContext('2d'), Object.assign({}, s, { x: 0, y: 0 }), k);
+      const b = await new Promise(r => c.toBlob(r, 'image/png'));
+      return b.arrayBuffer();
+    };
     try {
       const doc = await PDFDocument.load(rec.data.slice(0), { ignoreEncryption: false, updateMetadata: false });
+      S.pages.forEach((pg, d) => {
+        if (!pg.blank) return;
+        const page = doc.insertPage(d, [pg.w, pg.h]);
+        const col = pg.blank === 'grid' ? rgb(0.863, 0.89, 0.925) : rgb(0.773, 0.816, 0.871);
+        for (const [x0, y0, x1, y1] of patternLines(pg)) page.drawLine({ start: { x: x0, y: pg.h - y0 }, end: { x: x1, y: pg.h - y1 }, thickness: 0.6, color: col });
+      });
       const pages = doc.getPages();
-      for (const [key, list] of Object.entries(S.ink)) {
-        const i = Number(key), page = pages[i], vp = vps[i];
-        if (!page || !list || !list.length) continue;
+      for (let d = 0; d < S.pages.length; d++) {
+        const list = S.pages[d].ink, page = pages[d], vp = vps[d];
+        if (!page || !list.length) continue;
         const P = (x, y) => { const q = vp.convertToPdfPoint(x, y); return `${q[0].toFixed(2)} ${(-q[1]).toFixed(2)}`; };
         for (const s of list) {
+          if (s.k === 'text') {
+            const img = await doc.embedPng(await textPng(s)), q = vp.convertToPdfPoint(s.x, s.y + s.th);
+            page.drawImage(img, { x: q[0], y: q[1], width: s.tw, height: s.th });
+            continue;
+          }
+          if (s.k !== 'pen' && s.k !== 'hl') continue;
           const opt = { x: 0, y: 0, borderColor: hex(s.c), borderLineCap: LineCapStyle.Round, borderOpacity: s.k === 'hl' ? HL_ALPHA : 1 };
           const pts = s.p;
-          if (s.k === 'hl' || !s.pr || pts.length < 3) {
-            let d = `M ${P(pts[0][0], pts[0][1])}`;
-            if (pts.length === 1) d += ` L ${P(pts[0][0] + 0.01, pts[0][1])}`;
-            else if (pts.length === 2) d += ` L ${P(pts[1][0], pts[1][1])}`;
+          if (s.sh) {
+            let dd = `M ${P(pts[0][0], pts[0][1])}`;
+            for (let n = 1; n < pts.length; n++) dd += ` L ${P(pts[n][0], pts[n][1])}`;
+            if (pts.length === 1) dd += ` L ${P(pts[0][0] + 0.01, pts[0][1])}`;
+            page.drawSvgPath(dd, Object.assign(opt, { borderWidth: s.w }));
+          } else if (s.k === 'hl' || !s.pr || pts.length < 3) {
+            let dd = `M ${P(pts[0][0], pts[0][1])}`;
+            if (pts.length === 1) dd += ` L ${P(pts[0][0] + 0.01, pts[0][1])}`;
+            else if (pts.length === 2) dd += ` L ${P(pts[1][0], pts[1][1])}`;
             else {
-              for (let n = 1; n < pts.length - 1; n++) d += ` Q ${P(pts[n][0], pts[n][1])} ${P((pts[n][0] + pts[n + 1][0]) / 2, (pts[n][1] + pts[n + 1][1]) / 2)}`;
-              d += ` L ${P(pts[pts.length - 1][0], pts[pts.length - 1][1])}`;
+              for (let n = 1; n < pts.length - 1; n++) dd += ` Q ${P(pts[n][0], pts[n][1])} ${P((pts[n][0] + pts[n + 1][0]) / 2, (pts[n][1] + pts[n + 1][1]) / 2)}`;
+              dd += ` L ${P(pts[pts.length - 1][0], pts[pts.length - 1][1])}`;
             }
-            page.drawSvgPath(d, Object.assign(opt, { borderWidth: s.k === 'hl' || !s.pr ? s.w : widthAt(s, pts[0][2]) }));
+            page.drawSvgPath(dd, Object.assign(opt, { borderWidth: s.k === 'hl' || !s.pr ? s.w : widthAt(s, pts[0][2]) }));
           } else {
             segments(pts, (a, c, b, pr) => page.drawSvgPath(`M ${P(a[0], a[1])} Q ${P(c[0], c[1])} ${P(b[0], b[1])}`, Object.assign({}, opt, { borderWidth: widthAt(s, pr) })));
           }
@@ -941,13 +1741,17 @@
       return new Blob([await doc.save()], { type: 'application/pdf' });
     } catch (err) {
       const doc = await PDFDocument.create();
-      for (let i = 0; i < S.pages.length; i++) {
-        const page = await S.pdf.getPage(i + 1), vp1 = vps[i], k = Math.min(2, 2400 / Math.max(vp1.width, vp1.height));
-        const vp = page.getViewport({ scale: k });
-        const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+      for (let d = 0; d < S.pages.length; d++) {
+        const pg = S.pages[d], vp1 = vps[d], k = Math.min(2, 2400 / Math.max(vp1.width, vp1.height));
+        const c = document.createElement('canvas');
         const ctx = c.getContext('2d', { alpha: false });
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
-        for (const s of S.ink[i] || []) paintStroke(ctx, s, k);
+        if (pg.blank) { c.width = Math.floor(pg.w * k); c.height = Math.floor(pg.h * k); paintPattern(ctx, pg, k); }
+        else {
+          const page = await S.pdf.getPage(pg.src + 1), vp = page.getViewport({ scale: k });
+          c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        }
+        for (const s of pg.ink) paintItem(ctx, s, k);
         const jpg = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
         const img = await doc.embedJpg(await jpg.arrayBuffer());
         doc.addPage([vp1.width, vp1.height]).drawImage(img, { x: 0, y: 0, width: vp1.width, height: vp1.height });
@@ -962,11 +1766,10 @@
   const safeName = s => String(s).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
   function openSend() {
     if (S.present) exitPresent();
-    const sheet = S.meta.kind === 'sheet';
+    const sheet = S.meta.kind === 'sheet', grade = S.meta.kind === 'grade';
     const name = ls.get(K.name, '') || ls.get('irae-homework-name', '') || '';
     const base = safeName(S.meta.name.replace(/\.pdf$/i, ''));
-    const m = $('#modal'), card = $('#modal-card');
-    card.innerHTML = sheet ? `
+    showModal(sheet ? `
       <h2>선생님께 보내기</h2>
       <ol>
         <li><b>이름</b>을 확인해요.</li>
@@ -976,32 +1779,39 @@
       <label for="send-name">이름</label><input id="send-name" autocomplete="name" value="${esc(name)}" placeholder="이름을 적어 주세요">
       <p class="msg" id="send-msg" role="status"></p>
       <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn ghost" type="button" data-m="download" disabled>파일로 저장</button><button class="btn" type="button" data-m="share" disabled>카톡으로 보내기</button></div>`
+      : grade ? `
+      <h2>채점 돌려주기</h2>
+      <ol>
+        <li><b>[카톡으로 보내기]</b> → <b>카카오톡</b> → 그 학생(또는 반 단톡방)을 골라 보내요.</li>
+        <li>목록에 카톡이 없으면 <b>[파일로 저장]</b>한 뒤, 채팅방의 <b>+ → 파일</b>에서 보내요.</li>
+      </ol>
+      <p>파일 이름: <b>${esc(base)}-채점.pdf</b></p>
+      <p class="msg" id="send-msg" role="status"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn ghost" type="button" data-m="download" disabled>파일로 저장</button><button class="btn" type="button" data-m="share" disabled>카톡으로 보내기</button></div>`
       : `
       <h2>PDF로 저장</h2>
       <p>필기가 들어간 PDF를 만들어요. 인쇄하거나 다른 사람에게 보낼 수 있어요.</p>
       <p class="msg" id="send-msg" role="status"></p>
-      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn ghost" type="button" data-m="share" disabled>공유하기</button><button class="btn" type="button" data-m="download" disabled>파일로 저장</button></div>`;
-    m.hidden = false;
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn ghost" type="button" data-m="share" disabled>공유하기</button><button class="btn" type="button" data-m="download" disabled>파일로 저장</button></div>`, sendClick);
+    const card = $('#modal-card');
     prepared = null;
     const msg = $('#send-msg');
     msg.className = 'msg'; msg.textContent = '필기를 넣은 PDF를 만드는 중이에요…';
-    const fileName = () => sheet ? `${safeName($('#send-name').value) || '이름없음'}-${base}.pdf` : `${base}-필기.pdf`;
+    const fileName = () => sheet ? `${safeName($('#send-name').value) || '이름없음'}-${base}.pdf` : grade ? `${base}-채점.pdf` : `${base}-필기.pdf`;
     exportPdf().then(blob => {
       prepared = { blob, fileName };
       msg.textContent = `준비됐어요. (${Math.max(1, Math.round(blob.size / 1024))}KB)`;
       card.querySelectorAll('[data-m="share"],[data-m="download"]').forEach(b => { b.disabled = false; });
-      if (!canShareFiles()) { const sb = card.querySelector('[data-m="share"]'); if (sb && !sheet) sb.hidden = true; }
+      if (!canShareFiles()) { const sb = card.querySelector('[data-m="share"]'); if (sb && !sheet && !grade) sb.hidden = true; }
     }).catch(() => { msg.className = 'msg err'; msg.textContent = 'PDF를 만들지 못했어요. 다시 시도해 주세요.'; });
     const ni = $('#send-name'); if (ni) ni.focus({ preventScroll: true });
   }
-  function canShareFiles() {
-    try { return !!(navigator.canShare && navigator.canShare({ files: [new File([new Blob(['x'])], 'x.pdf', { type: 'application/pdf' })] })); } catch (e) { return false; }
+  function canShareFiles(type = 'application/pdf', ext = 'pdf') {
+    try { return !!(navigator.canShare && navigator.canShare({ files: [new File([new Blob(['x'])], 'x.' + ext, { type })] })); } catch (e) { return false; }
   }
-  $('#modal').addEventListener('click', e => {
-    const b = e.target.closest('[data-m]');
-    if (e.target.id === 'modal' || (b && b.dataset.m === 'close')) { $('#modal').hidden = true; return; }
-    if (!b || !prepared) return;
-    const sheet = S.meta.kind === 'sheet', msg = $('#send-msg');
+  function sendClick(b) {
+    if (!prepared) return;
+    const sheet = S.meta.kind === 'sheet', grade = S.meta.kind === 'grade', msg = $('#send-msg');
     if (sheet) {
       const nm = $('#send-name').value.trim();
       if (!nm) { msg.className = 'msg err'; msg.textContent = '이름을 먼저 적어 주세요.'; $('#send-name').focus({ preventScroll: true }); return; }
@@ -1010,25 +1820,92 @@
     const name = prepared.fileName();
     const file = new File([prepared.blob], name, { type: 'application/pdf' });
     const done = () => {
-      if (!sheet) return;
+      if (!sheet && !grade) return;
       S.meta.sentAt = Date.now(); DB.put('meta', S.meta).catch(() => {});
     };
+    const later = sheet || grade ? ' 카톡 채팅방의 + → 파일에서 보내 주세요.' : '';
     if (b.dataset.m === 'share') {
-      if (!canShareFiles()) { download(file); msg.className = 'msg'; msg.textContent = '이 기기에서는 바로 보내기가 안 돼서 파일로 저장했어요. 카톡 채팅방의 + → 파일에서 보내 주세요.'; done(); return; }
-      navigator.share(Object.assign({ files: [file], title: name }, sheet ? { text: `[이레 노트] ${$('#send-name').value.trim()} - ${S.meta.name}` } : {}))
-        .then(() => { msg.className = 'msg'; msg.textContent = sheet ? '보냈어요. 선생님 채팅방에 잘 갔는지 확인해 주세요.' : '공유했어요.'; done(); })
+      if (!canShareFiles()) { download(file); msg.className = 'msg'; msg.textContent = '이 기기에서는 바로 보내기가 안 돼서 파일로 저장했어요.' + later; done(); return; }
+      navigator.share(Object.assign({ files: [file], title: name }, sheet ? { text: `[이레 노트] ${$('#send-name').value.trim()} - ${S.meta.name}` } : grade ? { text: `[이레 노트] 채점 결과 - ${S.meta.name}` } : {}))
+        .then(() => { msg.className = 'msg'; msg.textContent = sheet ? '보냈어요. 선생님 채팅방에 잘 갔는지 확인해 주세요.' : grade ? '보냈어요. 학생 채팅방에 잘 갔는지 확인해 주세요.' : '공유했어요.'; done(); })
         .catch(err => { if (err && err.name === 'AbortError') return; download(file); msg.textContent = '공유가 안 돼서 파일로 저장했어요.'; done(); });
     } else if (b.dataset.m === 'download') {
-      download(file); msg.className = 'msg'; msg.textContent = `‘${name}’ 파일로 저장했어요.${sheet ? ' 카톡 채팅방의 + → 파일에서 보내 주세요.' : ''}`; done();
+      download(file); msg.className = 'msg'; msg.textContent = `‘${name}’ 파일로 저장했어요.${later}`; done();
     }
-  });
+  }
   function download(file) {
     const url = URL.createObjectURL(file), a = document.createElement('a');
     a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
+  // ════════════════ 필기 백업·불러오기 ════════════════
+  // 백업 파일 = 문서 정보 + 필기 (+ 고르면 내 PDF 원본). 선생님 학습지 PDF는 다시 받을 수 있어서 넣지 않음
+  const toB64 = buf => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(new Blob([buf])); });
+  const fromB64 = async s => (await fetch('data:application/octet-stream;base64,' + s)).arrayBuffer();
+  const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
+  async function openBackup() {
+    const metas = await DB.all('meta').catch(() => []);
+    if (!metas.length) { toast('아직 백업할 필기가 없어요.'); return; }
+    const own = metas.filter(m => m.kind !== 'sheet'), pdfSize = own.reduce((a, m) => a + (m.size || 0), 0);
+    const inkN = metas.filter(m => m.inkCount).length;
+    showModal(`
+      <h2>필기 백업</h2>
+      <p>문서 ${metas.length}개(필기 있는 것 ${inkN}개)를 파일 하나로 저장해요. 새 기기나 앱을 다시 설치한 뒤 [백업 불러오기]로 되살려요.</p>
+      ${own.length ? `<label class="check"><input type="checkbox" id="bk-pdf"${pdfSize < 30 * 1048576 ? ' checked' : ''}> 내 PDF·채점 PDF 파일도 함께 넣기 (${fmtSize(pdfSize)})</label>
+      <p class="hint">빼면 백업이 작아지고, 새 기기에서 같은 PDF를 다시 열면 필기가 이어져요.</p>` : ''}
+      <p class="msg" id="bk-msg" role="status"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="make">백업 파일 만들기</button></div>`, async b => {
+      if (b.dataset.m !== 'make' || b.disabled) return;
+      const msg = $('#bk-msg'), withPdf = !!($('#bk-pdf') && $('#bk-pdf').checked);
+      b.disabled = true; msg.className = 'msg'; msg.textContent = '백업 파일을 만드는 중이에요…';
+      try {
+        const docs = [];
+        for (const m of metas) {
+          const d = { meta: m, ink: await DB.get('ink', m.id).catch(() => null) };
+          if (withPdf && m.kind !== 'sheet') { const p = await DB.get('pdf', m.id).catch(() => null); if (p) d.pdf = await toB64(p.data); }
+          docs.push(d);
+        }
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        const file = new File([JSON.stringify({ app: 'yireh-note', v: 1, at: Date.now(), docs })], `이레노트-백업-${today}.json`, { type: 'application/json' });
+        download(file);
+        msg.textContent = `‘${file.name}’(${fmtSize(file.size)})로 저장했어요. 아이패드는 ‘파일’ 앱의 다운로드 폴더에 있어요.`;
+      } catch (e) { msg.className = 'msg err'; msg.textContent = '백업 파일을 만들지 못했어요. 저장 공간을 확인해 주세요.'; }
+      b.disabled = false;
+    });
+  }
+  $('#bk-in').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); } catch (err) { data = null; }
+    if (!data || data.app !== 'yireh-note' || !Array.isArray(data.docs)) { toast('이레 노트 백업 파일이 아니에요.', 3600); return; }
+    const docs = data.docs.filter(d => d && d.meta && typeof d.meta.id === 'string' && /^(sheet|file|grade):/.test(d.meta.id));
+    const metas = await DB.all('meta').catch(() => []), have = new Set(metas.map(m => m.id));
+    const over = docs.filter(d => have.has(d.meta.id)).length;
+    showModal(`
+      <h2>백업 불러오기</h2>
+      <p>${fmtDate(data.at)}에 만든 백업이에요. 문서 ${docs.length}개를 불러와요.</p>
+      ${over ? `<p><b>이 기기에 이미 있는 문서 ${over}개</b>는 백업 내용으로 바뀌어요.</p>` : ''}
+      <p class="msg" id="bk-msg" role="status"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="go">불러오기</button></div>`, async b => {
+      if (b.dataset.m !== 'go' || b.disabled) return;
+      b.disabled = true;
+      const msg = $('#bk-msg'); msg.textContent = '불러오는 중이에요…';
+      try {
+        for (const d of docs) {
+          const m = Object.assign({}, d.meta);
+          if (d.pdf) { await DB.put('pdf', { id: m.id, data: await fromB64(d.pdf) }); delete m.noPdf; }
+          else if (m.kind !== 'sheet') { if (!(await DB.get('pdf', m.id).catch(() => null))) m.noPdf = true; else delete m.noPdf; }
+          await DB.put('meta', m);
+          if (d.ink && d.ink.pages) await DB.put('ink', Object.assign({}, d.ink, { id: m.id }));
+        }
+        closeModal(); toast(`문서 ${docs.length}개를 불러왔어요.`, 3600); renderHome();
+      } catch (err) { msg.className = 'msg err'; msg.textContent = '불러오지 못했어요. 저장 공간을 확인해 주세요.'; b.disabled = false; }
+    });
+  });
+
   // 점검용
-  window.NOTE_DEBUG = { S, DB, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible };
+  window.NOTE_DEBUG = { S, DB, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, get SEL() { return SEL; } };
   renderHome();
 })();
