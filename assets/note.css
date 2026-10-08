@@ -167,3 +167,62 @@ button{font:inherit; color:inherit}
 .modal .inrow input{flex:1}
 .modal label.check{display:flex; gap:8px; align-items:flex-start; font-size:14px; line-height:1.5; margin:10px 0 2px}
 .modal label.check input{width:auto; margin-top:3px}
+
+/* 자·각도기 (화면 위에 떠 있음) */
+.guides{position:absolute; inset:0; pointer-events:none; z-index:6; overflow:hidden}
+.guide{position:absolute; left:0; top:0; transform-origin:50% 50%}
+.guide.ruler{background:rgba(232,241,255,.78); border:1px solid rgba(44,62,92,.55); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.guide.ruler canvas{position:absolute; inset:0; width:100%; height:100%}
+.guide .gdeg{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font:600 13px/1 Helvetica, Arial, sans-serif; color:#2C3E5C; background:rgba(255,255,255,.85); padding:3px 6px; border-radius:8px}
+.guide .gknob{position:absolute; width:30px; height:30px; margin:-15px 0 0 -15px; border-radius:50%; background:#2C3E5C; color:#fff; font-size:17px; line-height:30px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.guide.ruler .gknob{left:calc(100% - 28px); top:50%}
+.guide.prot svg{display:block; overflow:visible}
+.guide.prot .pf{fill:rgba(232,241,255,.78); stroke:rgba(44,62,92,.55); stroke-width:1}
+.guide.prot .pt{fill:none; stroke:#2C3E5C; stroke-width:1}
+.guide.prot text{font:10.5px Helvetica, Arial, sans-serif; fill:#2C3E5C; text-anchor:middle; dominant-baseline:central}
+.guide.prot text.li{font-size:9px; fill:#7A8799}
+.guide.prot .gdeg{font-size:12px}
+/* 커튼 */
+.page .curtain{position:absolute; left:0; right:0; bottom:0; z-index:5; background:repeating-linear-gradient(90deg, #3D4E6B 0 14px, #344460 14px 28px); box-shadow:0 -3px 10px rgba(0,0,0,.25); touch-action:none; cursor:ns-resize; display:flex; justify-content:center}
+.page .curtain .cg{margin-top:8px; height:max-content; font-size:12px; color:#fff; background:rgba(0,0,0,.35); padding:4px 10px; border-radius:999px; white-space:nowrap}
+/* 올가미 크기 손잡이 */
+.selbox .selh{position:absolute; right:-11px; bottom:-11px; width:22px; height:22px; border-radius:50%; background:var(--sel); border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3)}
+/* 오답 담기 상자 */
+.cover.live.clip{background:rgba(43,76,140,.12); outline:2px dashed var(--sel)}
+/* 필기 다시 보기 막대 */
+.replay{position:absolute; left:50%; top:10px; transform:translateX(-50%); z-index:7; display:flex; align-items:center; gap:4px; background:var(--bar); border:1px solid var(--line); border-radius:14px; padding:5px 6px; box-shadow:0 8px 28px rgba(0,0,0,.2); white-space:nowrap}
+.replay[hidden]{display:none}
+.replay .rp-n{font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; padding:0 6px}
+.viewer.present .replay{top:calc(12px + env(safe-area-inset-top))}
+/* 점수 버튼 */
+.stamp .glyph.sc{font-size:15px}
+.item .sub .score{color:var(--pen)}
+/* 쪽 정리 */
+.thumbs-bar{position:sticky; top:calc(-16px - env(safe-area-inset-top)); z-index:1; display:flex; align-items:center; gap:8px; max-width:1100px; margin:-16px auto 16px; padding:10px 0; background:var(--desk)}
+.thumbs-bar b{font-size:16px}
+.thumbs-hint{flex:1; font-size:13px; color:var(--muted)}
+.thumbs-bar .btn{padding:7px 12px; font-size:14px}
+.thumbw{display:flex; flex-direction:column}
+.tops{display:flex; gap:4px; justify-content:center; flex-wrap:wrap; margin-top:4px}
+.tops button{border:1px solid var(--line); background:var(--card); border-radius:8px; padding:4px 8px; font-size:12px; cursor:pointer; touch-action:manipulation}
+.tops button:disabled{opacity:.35; cursor:default}
+.thumbs.editing .thumb{cursor:default}
+/* 첫 화면 제목 옆 버튼 둘 */
+.h2-btns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end}
+/* 창: 점수·채점 기록·발표자 */
+.modal .btn small{font-weight:400; color:var(--muted); margin-left:4px}
+.modal .sc-row label{flex:1; margin:6px 0 4px}
+.modal .sc-row input{margin-top:4px}
+.modal .score-prev{margin:12px 0 0; font-size:26px; font-weight:600; color:var(--pen); text-align:center}
+.modal .score-prev.err{font-size:14px; font-weight:400}
+.modal .gtable{max-height:50vh; overflow:auto; border:1px solid var(--line); border-radius:10px}
+.modal table{width:100%; border-collapse:collapse; font-size:13.5px}
+.modal th,.modal td{padding:7px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top}
+.modal th{position:sticky; top:0; background:var(--card); color:var(--muted); font-weight:500}
+.modal td.num{white-space:nowrap; font-variant-numeric:tabular-nums}
+.modal td small{color:var(--muted)}
+.modal .pick-name{font-size:44px; font-weight:600; text-align:center; padding:26px 8px; margin:6px 0 4px; border-radius:14px; background:var(--sel-soft); color:var(--ink); word-break:keep-all; min-height:1.4em}
+.modal .pick-name.rolling{color:var(--muted)}
+.modal .pick-name.picked{animation:pk .5s ease-out}
+@keyframes pk{0%{transform:scale(.85)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+.modal .pick-info{text-align:center; margin:0}

@@ -8,18 +8,18 @@
  * - 학생 기록(localStorage)은 건드리지 않음.
  * 이 파일은 빌드할 때마다 새 버전 번호가 들어가서, 올리면 자동으로 새 버전으로 바뀝니다.
  */
-const VERSION = '202610080521';
+const VERSION = '202610080735';
 const SITE_CACHE = `yireh-note-site-${VERSION}`;
 const CDN_CACHE = 'yireh-cdn-v1';
 const PRECACHE = [
   "./",
   "index.html",
   "manifest.webmanifest",
-  "assets/note.css?v=202610080521",
-  "assets/note.js?v=202610080521",
-  "assets/vendor/pdf.min.js?v=202610080521",
-  "assets/vendor/pdf.worker.min.js?v=202610080521",
-  "assets/vendor/pdf-lib.min.js?v=202610080521",
+  "assets/note.css?v=202610080735",
+  "assets/note.js?v=202610080735",
+  "assets/vendor/pdf.min.js?v=202610080735",
+  "assets/vendor/pdf.worker.min.js?v=202610080735",
+  "assets/vendor/pdf-lib.min.js?v=202610080735",
   "icons/app-192.png",
   "icons/app-512.png",
   "icons/app-maskable-512.png",

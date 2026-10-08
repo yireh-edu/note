@@ -5,7 +5,8 @@
  * - 손가락: 펜(애플펜슬·S펜)을 한 번이라도 쓰면 손가락은 화면 옮기기만 함(손바닥 무시). 두 손가락은 언제나 확대·이동
  * - 선생님 학습지: sheets.js(선생님이 고치는 파일)의 목록 → 학생이 열어 쓰고 [선생님께 보내기]로 필기한 PDF를 카톡에 보냄
  * - 수업 화면: 한 쪽씩 화면 가득, 도구는 아래 작은 막대. 레이저 포인터·가림막·타이머·빈 쪽 넣기
- * - 학생 PDF 채점: 받은 PDF를 열어 빨간 펜·도장(○ ✓ ✗)으로 채점하고 돌려보냄
+ * - 학생 PDF 채점: 받은 PDF를 열어 빨간 펜·도장(○ ✓ ✗)으로 채점하고 점수를 찍어 돌려보냄 (채점 기록은 이 기기에)
+ * - 자·각도기(가장자리를 따라 반듯하게), 좌표평면·수직선 쪽, 필기 다시 보기, 발표자 뽑기, 커튼, 사진 넣기, 쪽 정리, 오답 노트
  */
 (function () {
   'use strict';
@@ -22,7 +23,7 @@
     get(k, f) { try { const v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
-  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav' };
+  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', roster: 'irae-note-roster', grades: 'irae-note-grades' };
   // 문서 정보(meta), PDF 원본(pdf), 필기(ink)를 따로 둬서 목록을 볼 때 큰 PDF를 읽지 않음
   const DB = (() => {
     let opening;
@@ -62,6 +63,10 @@
   const HL_ALPHA = 0.38;
   const FONT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
   const TOOLS = ['draw', 'erase', 'laser', 'cover', 'text', 'lasso'];
+  const A4 = { w: 595.28, h: 841.89 };
+  const WRONG = 'wrong:main';   // 오답 노트 (PDF 없이 넣은 쪽만 있는 문서)
+  const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1); return w + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? a : b); };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const set0 = ls.get(K.set, {});
   const FAV0 = [{ pen: 0, size: 1 }, { pen: 1, size: 0 }, { pen: 3, size: 1 }];
   const favOk = f => f && PENS[f.pen] && [0, 1, 2].includes(f.size);
@@ -76,7 +81,7 @@
     meta: null, pdf: null, pages: [], hist: [], redo: [],
     zoom: 1, scale: 1, cur: 0, present: false, view: 'home',
   };
-  const saveSettings = () => ls.set(K.set, { tool: S.tool === 'stamp' ? 'draw' : S.tool, pen: S.pen, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap });
+  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pen: S.pen, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap });
   const fingerDraws = () => S.finger === 'draw' || (S.finger === 'auto' && !S.penSeen);
   const isGrade = () => !!(S.meta && S.meta.kind === 'grade');
 
@@ -107,6 +112,10 @@
     timer: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 2M9.5 2.5h5M12 2.5V6"/></svg>',
     more: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/></svg>',
     pageAdd: '<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M12 10v7M8.5 13.5h7"/></svg>',
+    ruler: '<svg viewBox="0 0 24 24"><path d="M3 16.5L16.5 3 21 7.5 7.5 21z"/><path d="M7 12.5l2 2M9.6 9.9l1.4 1.4M12 7.5l2 2M14.6 4.9l1.4 1.4"/></svg>',
+    prot: '<svg viewBox="0 0 24 24"><path d="M3 18a9 9 0 0 1 18 0z"/><path d="M12 18l4.6-6.4M6.7 12.8l1 .8M12 9v1.4M17.3 12.8l-1 .8"/></svg>',
+    photo: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg>',
+    curtain: '<svg viewBox="0 0 24 24"><path d="M3 4h18"/><path d="M5 4v8c2 0 3-1 3.5-3 .5 2 1.5 3 3.5 3s3-1 3.5-3c.5 2 1.5 3 3.5 3V4"/><path d="M5 16h14M5 19.5h14" stroke-dasharray="2 2.2"/></svg>',
   };
 
   // ── 날짜·버전 ──
@@ -148,17 +157,20 @@
       </div>
       <div class="docwrap">
         <div class="doc" id="doc"><div class="pages" id="pages"></div></div>
+        <div class="guides" id="guides" aria-hidden="true"></div>
+        <div class="replay" id="replay" hidden><button class="tb" type="button" data-a="rp-toggle"></button><button class="tb" type="button" data-a="rp-speed"></button><span class="rp-n" id="rp-n"></span><button class="tb" type="button" data-a="rp-stop">${I.close}<span class="lbl">그만 보기</span></button></div>
         <div class="timer" id="timer" hidden><button type="button" class="tt" data-a="timer-toggle" aria-label="타이머 멈춤·계속"></button><button type="button" class="tx" data-a="timer-close" aria-label="타이머 끄기">${I.close}</button></div>
         <div class="selbar" id="selbar" hidden><span id="sel-n"></span><button class="tb" type="button" data-a="sel-dup">복제</button><button class="tb" type="button" data-a="sel-del">${I.trash}<span class="lbl">지우기</span></button><button class="tb" type="button" data-a="sel-done">선택 끝</button></div>
       </div>
-      <div class="thumbs" id="thumbs" hidden><div class="thumbs-grid" id="thumbs-grid"></div></div>
+      <div class="thumbs" id="thumbs" hidden><div class="thumbs-bar"><b>쪽 목록</b><span class="thumbs-hint" id="thumbs-hint"></span><button class="btn ghost" type="button" data-t="edit">쪽 정리</button><button class="btn ghost" type="button" data-t="close">닫기</button></div><div class="thumbs-grid" id="thumbs-grid"></div></div>
       <div class="pbar" id="pbar" role="toolbar" aria-label="수업 화면 도구"></div>
       <canvas class="fx" id="fx" aria-hidden="true"></canvas>
     </div>
     <div class="modal" id="modal" hidden><div class="card" role="dialog" aria-modal="true" id="modal-card"></div></div>
     <div class="toast" id="toast" role="status" hidden></div>
     <input type="file" id="file-in" accept="application/pdf,.pdf" hidden>
-    <input type="file" id="bk-in" accept=".json,application/json" hidden>`;
+    <input type="file" id="bk-in" accept=".json,application/json" hidden>
+    <input type="file" id="img-in" accept="image/*" hidden>`;
   const home = $('#home'), viewer = $('#viewer'), docEl = $('#doc'), pagesEl = $('#pages');
   let toastTimer;
   function toast(text, ms = 2600) {
@@ -167,9 +179,10 @@
   }
 
   // ── 창(모달): 내용과 버튼 처리 함수를 함께 넘김 ──
-  let modalFn = null;
-  function showModal(html, fn) { $('#modal-card').innerHTML = html; $('#modal').hidden = false; modalFn = fn || null; }
-  function closeModal() { $('#modal').hidden = true; modalFn = null; }
+  // onClose: 창이 닫힐 때(닫기·바깥 누름·처리 끝) 한 번 부름
+  let modalFn = null, modalOnClose = null;
+  function showModal(html, fn, onClose) { const c = $('#modal-card'); c.innerHTML = html; c.oninput = c.onchange = null; $('#modal').hidden = false; modalFn = fn || null; modalOnClose = onClose || null; }
+  function closeModal() { $('#modal').hidden = true; modalFn = null; const f = modalOnClose; modalOnClose = null; if (f) f(); }
   $('#modal').addEventListener('click', e => {
     const b = e.target.closest('[data-m]');
     if (e.target.id === 'modal' || (b && b.dataset.m === 'close')) { closeModal(); return; }
@@ -200,7 +213,7 @@
     const sheetRows = SHEETS.map(s => {
       const m = byId.get('sheet:' + s.id);
       const sent = !!(m && m.sentAt);
-      const state = sent ? `<span class="state sent">보냄 ${fmtDate(m.sentAt)}</span>` : m && m.inkCount ? '<span class="state doing">쓰는 중</span>' : '';
+      const state = sent ? `<span class="state sent">보냄 ${fmtDate(m.sentAt)}</span>` : m && m.inkCount ? `<span class="state doing">쓰는 중${m.inkPages && m.pages ? ` · ${m.inkPages}/${m.pages}쪽` : ''}</span>` : '';
       const due = dueInfo(s.due, sent);
       const sub = [due ? `<span class="due ${due.c}">${esc(due.t)}</span>` : '', s.note ? esc(s.note) : ''].filter(Boolean).join(' · ') || '눌러서 열기';
       return `<div class="item"><button class="main" type="button" data-sheet="${esc(s.id)}"><span class="name">${esc(s.title || s.id)}</span>
@@ -209,12 +222,15 @@
     const row = m => {
       const gone = m.noPdf ? '<span class="due late">PDF 파일 없음 · 같은 PDF를 다시 열면 필기가 이어져요</span> · ' : '';
       const state = m.kind === 'grade' && m.sentAt ? `<span class="state sent">돌려줌 ${fmtDate(m.sentAt)}</span>` : '';
+      const score = m.kind === 'grade' && m.score ? `<b class="score">${m.score.r}/${m.score.t}</b> · ` : '';
+      const clips = m.kind === 'wrong' && m.clips ? `문제 ${m.clips}개 · ` : '';
       return `<div class="item"><button class="main" type="button" data-open="${esc(m.id)}"><span class="name">${esc(m.name)}</span>
-      <span class="sub">${gone}${m.pages ? m.pages + '쪽 · ' : ''}${m.inkCount ? '필기 있음 · ' : ''}${fmtDate(m.opened || m.added)}</span></button>${state}
+      <span class="sub">${gone}${score}${clips}${m.pages ? m.pages + '쪽 · ' : ''}${m.inkCount ? '필기 있음 · ' : ''}${fmtDate(m.opened || m.added)}</span></button>${state}
       <button class="del${delArmed === m.id ? ' armed' : ''}" type="button" data-del="${esc(m.id)}">${delArmed === m.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`;
     };
     const fileRows = metas.filter(m => m.kind === 'file').map(row).join('');
     const gradeRows = metas.filter(m => m.kind === 'grade').map(row).join('');
+    const wrongRow = metas.filter(m => m.kind === 'wrong').map(row).join('');
     home.innerHTML = `
       <header>
         <h1>${esc(CFG.title || '이레 노트')}</h1>
@@ -223,7 +239,9 @@
       ${SHEETS.length || CFG.alwaysSheets ? `<h2>선생님 학습지</h2><div class="list">${sheetRows || '<p class="empty">아직 올라온 학습지가 없어요.</p>'}</div>` : ''}
       <h2>내 PDF <button class="btn" type="button" data-a="pick">PDF 열기</button></h2>
       <div class="list">${fileRows || '<p class="empty">아직 연 PDF가 없어요. [PDF 열기]로 휴대폰·태블릿에 있는 PDF를 골라 보세요.<br>PDF는 인터넷에 올라가지 않고 이 기기 안에서만 열려요.</p>'}</div>
-      <h2>학생 PDF 채점 <button class="btn ghost" type="button" data-a="pick-grade">학생 PDF 열기</button></h2>
+      <h2>오답 노트</h2>
+      <div class="list">${wrongRow || '<p class="empty">학습지·PDF를 보다가 [더보기 → 오답 노트에 담기]를 누르고 틀린 문제를 상자로 두르면 여기에 모여요. 빈 곳에 다시 풀어 볼 수 있어요.</p>'}</div>
+      <h2>학생 PDF 채점 <span class="h2-btns"><button class="btn ghost" type="button" data-a="grades">채점 기록</button><button class="btn ghost" type="button" data-a="pick-grade">학생 PDF 열기</button></span></h2>
       <div class="list">${gradeRows || '<p class="empty">선생님용이에요. 학생이 카톡으로 보낸 PDF를 열면 빨간 펜과 ○ ✓ ✗ 도장으로 채점하고, [채점 돌려주기]로 다시 보낼 수 있어요.</p>'}</div>
       <h2>필기 백업</h2>
       <div class="bk-row">
@@ -239,6 +257,7 @@
     if (b.dataset.a === 'pick') { pickKind = 'file'; $('#file-in').click(); return; }
     if (b.dataset.a === 'pick-grade') { pickKind = 'grade'; $('#file-in').click(); return; }
     if (b.dataset.a === 'backup') { openBackup(); return; }
+    if (b.dataset.a === 'grades') { openGrades(); return; }
     if (b.dataset.a === 'restore') { $('#bk-in').click(); return; }
     if (b.dataset.sheet) { openSheet(SHEETS.find(s => s.id === b.dataset.sheet)); return; }
     if (b.dataset.open) { openDoc(b.dataset.open); return; }
@@ -297,30 +316,32 @@
   async function openDoc(id) {
     const token = ++loadToken;
     const [meta, pdfRec, inkRec] = await Promise.all([DB.get('meta', id), DB.get('pdf', id), DB.get('ink', id)].map(p => p.catch(() => null)));
-    if (meta && !pdfRec && meta.noPdf) { toast('이 기기에 PDF 파일이 없어요. [PDF 열기]로 같은 PDF를 고르면 필기가 이어져요.', 5000); return; }
-    if (!meta || !pdfRec) { toast('파일을 찾지 못했어요.'); return; }
-    let lib;
-    try { lib = await pdfjs(); } catch (e) { toast('PDF 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.', 4000); return; }
-    let pdf;
-    try {
-      // 원본은 내보낼 때 다시 쓰므로 복사본을 넘김 (pdf.js가 넘겨받은 데이터를 비워 버림)
-      pdf = await lib.getDocument({ data: new Uint8Array(pdfRec.data.slice(0)), isEvalSupported: false }).promise;
-    } catch (e) { toast(e && e.name === 'PasswordException' ? '암호가 걸린 PDF는 열 수 없어요.' : 'PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.', 4000); return; }
+    const bare = !!(meta && meta.kind === 'wrong');   // 오답 노트: PDF 없이 넣은 쪽만
+    if (meta && !pdfRec && meta.noPdf && !bare) { toast('이 기기에 PDF 파일이 없어요. [PDF 열기]로 같은 PDF를 고르면 필기가 이어져요.', 5000); return; }
+    if (!meta || (!pdfRec && !bare)) { toast('파일을 찾지 못했어요.'); return; }
+    let pdf = null;
+    if (!bare) {
+      let lib;
+      try { lib = await pdfjs(); } catch (e) { toast('PDF 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.', 4000); return; }
+      try {
+        // 원본은 내보낼 때 다시 쓰므로 복사본을 넘김 (pdf.js가 넘겨받은 데이터를 비워 버림)
+        pdf = await lib.getDocument({ data: new Uint8Array(pdfRec.data.slice(0)), isEvalSupported: false }).promise;
+      } catch (e) { toast(e && e.name === 'PasswordException' ? '암호가 걸린 PDF는 열 수 없어요.' : 'PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.', 4000); return; }
+    }
     if (token !== loadToken) return;
-    resetRender(); clearSel(); stopTimer();
+    resetRender(); clearSel(); stopTimer(); stopReplay(); curtains.clear(); G.ruler = G.prot = null;
     if (S.pdf && S.pdf !== pdf) { try { S.pdf.destroy(); } catch (e) {} }
     S.pdf = pdf; S.meta = meta; S.hist = []; S.redo = [];
-    const first = await pdf.getPage(1), v1 = first.getViewport({ scale: 1 });
-    const n = pdf.numPages;
-    // 넣은 빈 쪽이 있으면 저장된 순서대로. PDF 쪽은 늘 원래 순서 (학습지가 바뀌어 쪽 수가 달라져도 맞춰 줌)
+    const v1 = pdf ? (await pdf.getPage(1)).getViewport({ scale: 1 }) : { width: A4.w, height: A4.h };
+    const n = pdf ? pdf.numPages : 0;
+    // 쪽 순서(넣은 빈 쪽·옮긴 쪽·복사한 쪽)가 저장돼 있으면 그대로. 학습지가 바뀌어 쪽 수가 달라지면 없는 쪽은 빼고 빠진 쪽은 뒤에 붙임
     let order = inkRec && Array.isArray(inkRec.order) ? inkRec.order.filter(o => o && (o.b ? o.w > 0 && o.h > 0 : Number.isInteger(o.s) && o.s >= 0 && o.s < n)) : null;
     if (order) {
-      const srcs = order.filter(o => !o.b).map(o => o.s);
-      if (srcs.some((v, k) => k && v <= srcs[k - 1])) order = null;
-      else for (let s = (srcs.length ? srcs[srcs.length - 1] + 1 : 0); s < n; s++) order.push({ s });
-      if (order && order.filter(o => !o.b).length !== n) order = null;
+      const have = new Set(order.filter(o => !o.b).map(o => o.s));
+      for (let s = 0; s < n; s++) if (!have.has(s)) order.push({ s });
     }
     if (!order) order = Array.from({ length: n }, (_, s) => ({ s }));
+    if (!order.length) order = [{ b: 'plain', w: A4.w, h: A4.h }];
     const saved = (inkRec && inkRec.pages) || {};
     S.pages = order.map((o, i) => o.b ? newPage({ blank: o.b, w: o.w, h: o.h }, saved[i]) : newPage({ src: o.s, w: v1.width, h: v1.height }, saved[i]));
     S.pages.forEach(pg => { if (pg.src === 0) pg.vp = v1; });
@@ -337,9 +358,10 @@
       for (let s = 1; s < n; s++) {
         if (token !== loadToken) return;
         const pgp = await pdf.getPage(s + 1), v = pgp.getViewport({ scale: 1 });
-        const pg = S.pages.find(p => p.src === s); if (!pg) continue;
-        pg.vp = v;
-        if (Math.abs(v.width - pg.w) > 0.5 || Math.abs(v.height - pg.h) > 0.5) { pg.w = v.width; pg.h = v.height; scheduleLayout(); }
+        for (const pg of S.pages.filter(p => p.src === s)) {
+          pg.vp = v;
+          if (Math.abs(v.width - pg.w) > 0.5 || Math.abs(v.height - pg.h) > 0.5) { pg.w = v.width; pg.h = v.height; scheduleLayout(); }
+        }
       }
     })().catch(() => {});
   }
@@ -374,9 +396,11 @@
   }
 
   async function closeDoc() {
+    stopReplay();
     await flushInk();
     if (S.present) exitPresent();
     clearSel(); stopTimer();
+    G.ruler = G.prot = null; renderGuides(); curtains.clear();
     if (S.meta) { S.meta.lastPage = S.cur; await DB.put('meta', S.meta).catch(() => {}); }
     loadToken++; resetRender();
     viewer.hidden = true; home.hidden = false; $('#thumbs').hidden = true;
@@ -402,6 +426,7 @@
       st.marginBottom = gap + 'px';
       st.display = S.present && i !== S.cur ? 'none' : '';
     });
+    renderGuides();
   }
   let layoutQueued = false;
   function scheduleLayout() { if (layoutQueued) return; layoutQueued = true; requestAnimationFrame(() => { layoutQueued = false; const a = anchor(); layout(); restore(a); updateVisible(); }); }
@@ -497,20 +522,47 @@
     rendering = false;
     if (queue.size && S.view === 'doc') pump(prefer);
   }
-  // 넣은 빈 쪽의 바탕: 백지·줄 노트·모눈
-  const PATTERN = { plain: '백지', lines: '줄 노트', grid: '모눈' };
-  function patternLines(pg) {
-    const L = [], { w, h } = pg;
-    if (pg.blank === 'lines') for (let y = 56; y < h - 24; y += 26) L.push([28, y, w - 28, y]);
-    if (pg.blank === 'grid') { for (let x = 18; x < w; x += 18) L.push([x, 0, x, h]); for (let y = 18; y < h; y += 18) L.push([0, y, w, y]); }
-    return L;
+  // 넣은 빈 쪽의 바탕: 백지·줄 노트·모눈·좌표평면·수직선
+  // 선 [x0, y0, x1, y1, 색, 굵기] · 숫자 [x, y, 글, 크기, 맞춤(l|c|r), 기준(top|mid)] — 화면과 PDF가 같은 목록으로 그림
+  const PATTERN = { plain: '백지', lines: '줄 노트', grid: '모눈', coord: '좌표평면', numline: '수직선' };
+  const PC = { light: '#DCE3EC', line: '#C5D0DE', axis: '#4A5566' };
+  const NUM_FONT = 'Helvetica, Arial, sans-serif';
+  const num = String;   // 빼기는 PDF 기본 글꼴에 있는 '-'로
+  function patternSpec(pg) {
+    const L = [], T = [], { w, h } = pg, A = PC.axis;
+    const arrow = (x, y, dx, dy) => { const s = 6, n = 3.5; L.push([x, y, x - dx * s - dy * n, y - dy * s + dx * n, A, 1], [x, y, x - dx * s + dy * n, y - dy * s - dx * n, A, 1]); };
+    if (pg.blank === 'lines') for (let y = 56; y < h - 24; y += 26) L.push([28, y, w - 28, y, PC.line, 0.6]);
+    if (pg.blank === 'grid') { for (let x = 18; x < w; x += 18) L.push([x, 0, x, h, PC.light, 0.6]); for (let y = 18; y < h; y += 18) L.push([0, y, w, y, PC.light, 0.6]); }
+    if (pg.blank === 'coord') {
+      const c = 20, cx = r2(w / 2), cy = r2(h / 2), nx = Math.floor((w / 2 - 30) / c), ny = Math.floor((h / 2 - 34) / c);
+      for (let i = -nx; i <= nx; i++) if (i) L.push([cx + i * c, cy - ny * c, cx + i * c, cy + ny * c, PC.light, 0.6]);
+      for (let j = -ny; j <= ny; j++) if (j) L.push([cx - nx * c, cy + j * c, cx + nx * c, cy + j * c, PC.light, 0.6]);
+      const xr = cx + nx * c + 14, yt = cy - ny * c - 14;
+      L.push([cx - nx * c - 6, cy, xr, cy, A, 1], [cx, cy + ny * c + 6, cx, yt, A, 1]);
+      arrow(xr, cy, 1, 0); arrow(cx, yt, 0, -1);
+      for (let i = -nx; i <= nx; i++) if (i) { L.push([cx + i * c, cy - 2.5, cx + i * c, cy + 2.5, A, 0.8]); T.push([cx + i * c, cy + 5, num(i), 7, 'c', 'top']); }
+      for (let j = -ny; j <= ny; j++) if (j) { L.push([cx - 2.5, cy - j * c, cx + 2.5, cy - j * c, A, 0.8]); T.push([cx - 5, cy - j * c, num(j), 7, 'r', 'mid']); }
+      T.push([cx - 4, cy + 4, 'O', 8, 'r', 'top'], [xr + 4, cy, 'x', 10, 'l', 'mid'], [cx + 8, yt + 2, 'y', 10, 'l', 'mid']);
+    }
+    if (pg.blank === 'numline') {
+      const u = (w - 110) / 20, x0 = w / 2 - 10 * u, x1 = w / 2 + 10 * u;
+      for (let y = 100; y < h - 50; y += 130) {
+        L.push([x0 - 16, y, x1 + 16, y, A, 1]); arrow(x1 + 16, y, 1, 0); arrow(x0 - 16, y, -1, 0);
+        for (let i = -10; i <= 10; i++) { const x = r2(w / 2 + i * u), t = i ? 4 : 7; L.push([x, y - t, x, y + t, A, 0.8]); T.push([x, y + 9, num(i), 7.5, 'c', 'top']); }
+      }
+    }
+    return { L, T };
   }
   function paintPattern(ctx, pg, k) {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pg.w * k, pg.h * k);
-    ctx.strokeStyle = pg.blank === 'grid' ? '#DCE3EC' : '#C5D0DE'; ctx.lineWidth = Math.max(0.5, 0.6 * k);
-    ctx.beginPath();
-    for (const [x0, y0, x1, y1] of patternLines(pg)) { ctx.moveTo(x0 * k, y0 * k); ctx.lineTo(x1 * k, y1 * k); }
-    ctx.stroke();
+    const { L, T } = patternSpec(pg);
+    ctx.lineCap = 'round';
+    for (const [x0, y0, x1, y1, c, w] of L) { ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.5, w * k); ctx.beginPath(); ctx.moveTo(x0 * k, y0 * k); ctx.lineTo(x1 * k, y1 * k); ctx.stroke(); }
+    ctx.fillStyle = PC.axis;
+    for (const [x, y, t, size, al, base] of T) {
+      ctx.font = `${size * k}px ${NUM_FONT}`; ctx.textAlign = { l: 'left', c: 'center', r: 'right' }[al]; ctx.textBaseline = base === 'top' ? 'top' : 'middle';
+      ctx.fillText(t, x * k, y * k);
+    }
   }
 
   // 필기 캔버스: 쪽 크기 × 화면 배율. 좌표(pt) × k = 캔버스 픽셀
@@ -519,7 +571,8 @@
     let px = DPR(); if (cssW * cssH * px * px > MAX_PX) px = Math.sqrt(MAX_PX / (cssW * cssH));
     return S.scale * px;
   }
-  // off: 옮기는 중인 선택 항목 { set, dx, dy }
+  // off: 옮기거나 크기를 바꾸는 중인 선택 항목 { set, dx, dy } | { set, f, ox, oy }
+  const xf = (off, x, y) => off.f ? [off.ox + (x - off.ox) * off.f, off.oy + (y - off.oy) * off.f] : [x + off.dx, y + off.dy];
   function drawInk(i, off) {
     const pg = S.pages[i]; if (!pg) return;
     const c = pg.el.querySelector('.inkc'), k = inkK(pg);
@@ -527,9 +580,15 @@
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const ctx = c.getContext('2d');
     ctx.clearRect(0, 0, w, h);
-    for (const s of pg.ink) {
-      if (off && off.set.has(s)) { ctx.save(); ctx.translate(off.dx * k, off.dy * k); paintItem(ctx, s, k); ctx.restore(); }
-      else paintItem(ctx, s, k);
+    // 다시 보기 중인 쪽은 지금까지 나온 것만
+    const list = RP && RP.pg === pg ? RP.items.slice(0, RP.i) : pg.ink;
+    for (const s of list) {
+      if (off && off.set.has(s)) {
+        ctx.save();
+        if (off.f) { ctx.translate(off.ox * k, off.oy * k); ctx.scale(off.f, off.f); ctx.translate(-off.ox * k, -off.oy * k); }
+        else ctx.translate(off.dx * k, off.dy * k);
+        paintItem(ctx, s, k); ctx.restore();
+      } else paintItem(ctx, s, k);
     }
     pg.inkScale = S.scale;
     renderCovers(pg, off);
@@ -537,7 +596,28 @@
   const drawPg = pg => { const i = S.pages.indexOf(pg); if (i >= 0) drawInk(i); };
   function paintItem(ctx, s, k) {
     if (s.k === 'text') paintText(ctx, s, k);
+    else if (s.k === 'img') paintImg(ctx, s, k);
     else if (s.k === 'pen' || s.k === 'hl') paintStroke(ctx, s, k);
+  }
+  // 사진: 항목에 그림(JPEG 데이터)을 그대로 담아 두고, 처음 그릴 때 한 번 읽어 둠
+  const imgCache = new WeakMap();
+  function imgOf(s) {
+    let im = imgCache.get(s);
+    if (!im) {
+      im = new Image();
+      im.onload = () => { const pg = S.pages.find(p => p.ink.includes(s)); if (pg && pg.inkScale) drawPg(pg); };
+      im.src = s.src; imgCache.set(s, im);
+    }
+    return im;
+  }
+  const loadImgs = list => Promise.all(list.filter(s => s.k === 'img').map(s => {
+    const im = imgOf(s);
+    return im.complete && im.naturalWidth ? null : new Promise(r => { im.addEventListener('load', r, { once: true }); im.addEventListener('error', r, { once: true }); });
+  }));
+  function paintImg(ctx, s, k) {
+    const im = imgOf(s);
+    if (im.complete && im.naturalWidth) ctx.drawImage(im, s.x * k, s.y * k, s.iw * k, s.ih * k);
+    else { ctx.save(); ctx.fillStyle = '#EEF2F7'; ctx.fillRect(s.x * k, s.y * k, s.iw * k, s.ih * k); ctx.restore(); }
   }
   const widthAt = (s, pr) => s.w * (0.45 + 1.1 * Math.max(0, Math.min(1, pr)));
   // 선 그리기: 점 사이를 부드러운 곡선으로. 펜 압력이 있으면 마디마다 굵기를 바꿈. 반듯한 도형(sh)은 꺾인 그대로
@@ -604,8 +684,8 @@
     const layer = pg.el && pg.el.querySelector('.covers'); if (!layer) return;
     const list = pg.ink.filter(s => s.k === 'cover');
     layer.innerHTML = list.map(s => {
-      const o = off && off.set.has(s) ? off : { dx: 0, dy: 0 };
-      return `<div class="cover${opened.has(s) ? ' open' : ''}" style="left:${(s.x + o.dx) / pg.w * 100}%;top:${(s.y + o.dy) / pg.h * 100}%;width:${s.cw / pg.w * 100}%;height:${s.ch / pg.h * 100}%"><span>${opened.has(s) ? '' : '눌러서 보기'}</span></div>`;
+      const o = off && off.set.has(s) ? off : { dx: 0, dy: 0 }, [x, y] = xf(o, s.x, s.y), f = o.f || 1;
+      return `<div class="cover${opened.has(s) ? ' open' : ''}" style="left:${x / pg.w * 100}%;top:${y / pg.h * 100}%;width:${s.cw * f / pg.w * 100}%;height:${s.ch * f / pg.h * 100}%"><span>${opened.has(s) ? '' : '눌러서 보기'}</span></div>`;
     }).join('');
   }
   function coverAt(pg, [x, y]) {
@@ -623,23 +703,37 @@
   }
 
   // ── 항목 공통: 범위·닿음·옮기기 ──
+  const isBox = s => s.k === 'cover' || s.k === 'text' || s.k === 'img';
   function bounds(s) {
     if (s.k === 'cover') return [s.x, s.y, s.x + s.cw, s.y + s.ch];
     if (s.k === 'text') return [s.x, s.y, s.x + s.tw, s.y + s.th];
+    if (s.k === 'img') return [s.x, s.y, s.x + s.iw, s.y + s.ih];
     let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
     for (const q of s.p) { a = Math.min(a, q[0]); b = Math.min(b, q[1]); c = Math.max(c, q[0]); d = Math.max(d, q[1]); }
     const h = s.w / 2;
     return [a - h, b - h, c + h, d + h];
   }
   function hitItem(s, x, y, R) {
-    if (s.k === 'cover' || s.k === 'text') { const [a, b, c, d] = bounds(s); return x >= a - R && x <= c + R && y >= b - R && y <= d + R; }
+    if (isBox(s)) { const [a, b, c, d] = bounds(s); return x >= a - R && x <= c + R && y >= b - R && y <= d + R; }
     const pad = R + s.w / 2;
     return s.p.some((q, n) => n === 0 ? Math.hypot(q[0] - x, q[1] - y) < pad : segDist(x, y, s.p[n - 1][0], s.p[n - 1][1], q[0], q[1]) < pad);
   }
   function translate(s, dx, dy) {
-    if (s.k === 'cover' || s.k === 'text') { s.x = r2(s.x + dx); s.y = r2(s.y + dy); }
+    if (isBox(s)) { s.x = r2(s.x + dx); s.y = r2(s.y + dy); }
     else s.p = s.p.map(([x, y, pr]) => [r2(x + dx), r2(y + dy), pr]);
   }
+  // 크기 바꾸기: (ox, oy)를 기준으로 f배. 선은 굵기도 함께
+  function scaleItem(s, ox, oy, f) {
+    const X = v => r2(ox + (v - ox) * f), Y = v => r2(oy + (v - oy) * f);
+    if (isBox(s)) { s.x = X(s.x); s.y = Y(s.y); }
+    if (s.k === 'cover') { s.cw = r2(s.cw * f); s.ch = r2(s.ch * f); }
+    else if (s.k === 'img') { s.iw = r2(s.iw * f); s.ih = r2(s.ih * f); }
+    else if (s.k === 'text') { s.fs = r2(Math.max(4, s.fs * f)); measureText(s); }
+    else { s.p = s.p.map(([x, y, pr]) => [X(x), Y(y), pr]); s.w = r2(Math.max(0.3, s.w * f)); }
+  }
+  // 되돌리기용: 모양에 관한 값만 떠 둠 (사진 데이터는 빼고)
+  const GEO = ['x', 'y', 'p', 'w', 'fs', 'tw', 'th', 'cw', 'ch', 'iw', 'ih'];
+  const geo = s => { const o = {}; for (const k of GEO) if (k in s) o[k] = s[k]; return JSON.parse(JSON.stringify(o)); };
   function segDist(px, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
     const t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
@@ -750,6 +844,267 @@
     if (FX.trail.length) FX.raf = requestAnimationFrame(fxFrame);
   }
 
+  // ════════════════ 자·각도기 ════════════════
+  // 화면 위에 떠 있는 도구(쪽을 옮겨도 그 자리). 위치 (x, y)는 문서 칸 왼쪽 위 기준 화면 px, a는 돌린 각(라디안)
+  // 몸통을 끌면 옮기고, 두 손가락이나 ↻ 손잡이로 돌림(15°마다 살짝 붙음). 펜을 가장자리에 대고 그으면 반듯한 선, 각도기 바깥 둘레는 둥근 선
+  const G = { ruler: null, prot: null };
+  const guidesEl = $('#guides');
+  const RULER_H = 64, CM = 72 / 2.54;
+  const rulerLen = () => Math.round(Math.min(Math.max(guidesEl.clientWidth * 0.85, 240), 760));
+  const protR = () => Math.round(clamp(Math.min(guidesEl.clientWidth, guidesEl.clientHeight) * 0.3, 110, 190));
+  const degOf = a => Math.round(((-a * 180 / Math.PI) % 180 + 180) % 180) % 180;
+  function snapAng(a) {
+    a = Math.atan2(Math.sin(a), Math.cos(a));
+    const d = a * 180 / Math.PI, n = Math.round(d / 15) * 15;
+    return Math.abs(d - n) < 2.2 ? n * Math.PI / 180 : a;
+  }
+  function toggleGuide(kind) {
+    if (G[kind]) G[kind] = null;
+    else {
+      const w = guidesEl.clientWidth, h = guidesEl.clientHeight;
+      G[kind] = { x: w / 2, y: kind === 'ruler' ? h * 0.42 : h * 0.62, a: 0 };
+      toast(kind === 'ruler' ? '자: 끌어서 옮기고, 두 손가락이나 ↻로 돌려요. 펜을 자 가장자리에 대고 그으면 반듯한 선이에요. 눈금은 종이의 cm예요.'
+        : '각도기: 끌어서 옮기고, 두 손가락이나 ↻로 돌려요. 아래 곧은 쪽에 대고 그으면 반듯한 선, 둥근 둘레를 따라 그으면 둥근 선이에요.', 4600);
+    }
+    renderGuides(); renderTools();
+  }
+  function renderGuides() {
+    for (const kind of ['ruler', 'prot']) {
+      let el = guidesEl.querySelector('.' + kind);
+      const g = G[kind];
+      if (!g || S.view !== 'doc') { if (el) el.remove(); continue; }
+      if (!el) { el = document.createElement('div'); el.className = 'guide ' + kind; guidesEl.appendChild(el); }
+      if (kind === 'ruler') {
+        const L = rulerLen(), H = RULER_H, key = `${L}|${S.scale}|${DPR()}`;
+        if (el.dataset.key !== key) {
+          el.dataset.key = key; el.style.width = L + 'px'; el.style.height = H + 'px';
+          el.innerHTML = '<canvas></canvas><span class="gdeg"></span><span class="gknob">↻</span>';
+          drawRulerTicks(el.querySelector('canvas'), L, H);
+        }
+        el.style.transform = `translate(${g.x - L / 2}px, ${g.y - H / 2}px) rotate(${g.a}rad)`;
+      } else {
+        const R = protR(), key = String(R);
+        if (el.dataset.key !== key) {
+          el.dataset.key = key; el.style.width = 2 * R + 'px'; el.style.height = R + 'px'; el.style.transformOrigin = `${R}px ${R}px`;
+          el.innerHTML = protSvg(R) + `<span class="gdeg" style="left:${R}px;top:${R * 0.8}px"></span><span class="gknob" style="left:${R}px;top:${R * 0.6}px">↻</span>`;
+        }
+        el.style.transform = `translate(${g.x - R}px, ${g.y - R}px) rotate(${g.a}rad)`;
+      }
+      el.querySelector('.gdeg').textContent = degOf(g.a) + '°';
+    }
+  }
+  // 자 눈금: 종이 위 실제 cm (확대하면 눈금도 커짐). 위아래 가장자리 모두
+  function drawRulerTicks(c, L, H) {
+    const d = DPR(); c.width = Math.round(L * d); c.height = Math.round(H * d);
+    const ctx = c.getContext('2d'); ctx.scale(d, d);
+    const cm = CM * S.scale, x0 = 14, step = cm / 10 >= 4 ? 1 : cm / 2 >= 5 ? 5 : 10;
+    const every = Math.max(1, Math.ceil(26 / cm));
+    ctx.strokeStyle = '#2C3E5C'; ctx.fillStyle = '#2C3E5C'; ctx.lineWidth = 1;
+    ctx.font = `11px ${NUM_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.beginPath();
+    for (let i = 0; x0 + i * cm / 10 <= L - 10; i += step) {
+      const x = Math.round(x0 + i * cm / 10) + 0.5, t = i % 10 === 0 ? 15 : i % 5 === 0 ? 10 : 6;
+      ctx.moveTo(x, 0); ctx.lineTo(x, t); ctx.moveTo(x, H); ctx.lineTo(x, H - t);
+      if (i % 10 === 0 && (i / 10) % every === 0 && x < L - 50) ctx.fillText(String(i / 10), x, 17);
+    }
+    ctx.stroke();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('cm', 8, H / 2);
+  }
+  function protSvg(R) {
+    let ticks = '', labels = '';
+    const fine = R >= 150;
+    for (let d = 0; d <= 180; d++) {
+      if (!fine && d % 5) continue;
+      const t = d * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), l = d % 10 === 0 ? 15 : d % 5 === 0 ? 10 : 5;
+      ticks += `M${(R + R * c).toFixed(1)} ${(R - R * s).toFixed(1)}L${(R + (R - l) * c).toFixed(1)} ${(R - (R - l) * s).toFixed(1)}`;
+      if (d % 10 === 0) {
+        labels += `<text x="${(R + (R - 25) * c).toFixed(1)}" y="${(R - (R - 25) * s).toFixed(1)}" class="lo">${d}</text>`;
+        if (R >= 130 && d % 30 === 0) labels += `<text x="${(R + (R - 42) * c).toFixed(1)}" y="${(R - (R - 42) * s).toFixed(1)}" class="li">${180 - d}</text>`;
+      }
+    }
+    return `<svg width="${2 * R}" height="${R}" viewBox="0 0 ${2 * R} ${R}"><path class="pf" d="M0.5 ${R}A${R - 0.5} ${R - 0.5} 0 0 1 ${2 * R - 0.5} ${R}Z"/><path class="pt" d="${ticks}M${R} ${R}V${R - 10}M${R - 9} ${R - 0.5}H${R + 9}"/>${labels}</svg>`;
+  }
+  // 화면 점 → 도구 기준 (u: 길이 방향, v: 수직, 아래가 +)
+  function gLocal(g, cx, cy) {
+    const r = guidesEl.getBoundingClientRect(), dx = cx - r.left - g.x, dy = cy - r.top - g.y, c = Math.cos(g.a), s = Math.sin(g.a);
+    return [dx * c + dy * s, -dx * s + dy * c];
+  }
+  function gClient(g, u, v) {
+    const r = guidesEl.getBoundingClientRect(), c = Math.cos(g.a), s = Math.sin(g.a);
+    return [r.left + g.x + u * c - v * s, r.top + g.y + u * s + v * c];
+  }
+  // 닿은 곳: knob(돌리기) | body(옮기기) | edge(곧은 가장자리, v0) | arc(둥근 둘레, r). 가장자리는 펜으로 쓸 때만
+  function guideHit(cx, cy, drawer) {
+    if (G.prot) {
+      const g = G.prot, R = protR(), [u, v] = gLocal(g, cx, cy), rr = Math.hypot(u, v);
+      if (Math.hypot(u, v + R * 0.4) < 22) return { kind: 'prot', part: 'knob' };
+      if (drawer && Math.abs(u) <= R && v >= -8 && v <= 28) return { kind: 'prot', part: 'edge', v0: 0, half: R };
+      if (drawer && v < -8 && rr >= R - 8 && rr <= R + 28) return { kind: 'prot', part: 'arc', r: Math.max(R, rr) };
+      if (v <= 0 && rr <= R) return { kind: 'prot', part: 'body' };
+    }
+    if (G.ruler) {
+      const g = G.ruler, L = rulerLen(), H = RULER_H, [u, v] = gLocal(g, cx, cy);
+      if (Math.hypot(u - (L / 2 - 28), v) < 20) return { kind: 'ruler', part: 'knob' };
+      if (Math.abs(u) <= L / 2) {
+        const av = Math.abs(v);
+        if (drawer && av >= H / 2 - 8 && av <= H / 2 + 28) return { kind: 'ruler', part: 'edge', v0: Math.sign(v || 1) * H / 2, half: L / 2 };
+        if (av <= H / 2) return { kind: 'ruler', part: 'body' };
+      }
+    }
+    return null;
+  }
+  // 펜 위치를 가장자리·둘레에 붙인 화면 점들
+  function guidePoints(a, cx, cy) {
+    const gh = a.guide, g = G[gh.kind]; if (!g) return null;
+    const [u, v] = gLocal(g, cx, cy);
+    if (gh.part === 'edge') return [gClient(g, clamp(u, -gh.half, gh.half), gh.v0)];
+    const ph = Math.atan2(v, u);
+    if (a.phPrev == null) { a.ph0 = ph; a.phPrev = ph; a.acc = 0; }
+    let d = ph - a.phPrev; d = Math.atan2(Math.sin(d), Math.cos(d));
+    a.acc = clamp(a.acc + d, -Math.PI * 2, Math.PI * 2); a.phPrev = ph;
+    const n = Math.max(1, Math.ceil(Math.abs(a.acc) / (Math.PI / 90)));
+    return Array.from({ length: n + 1 }, (_, i) => { const t = a.ph0 + a.acc * i / n; return gClient(g, gh.r * Math.cos(t), gh.r * Math.sin(t)); });
+  }
+  let gd = null;   // 자·각도기를 잡고 옮기는 중
+  function startGuide(e, gh) {
+    const g = G[gh.kind], r = guidesEl.getBoundingClientRect();
+    mode = 'guide';
+    gd = { kind: gh.kind, type: e.pointerType, id: e.pointerId, knob: gh.part === 'knob', x0: e.clientX, y0: e.clientY, gx: g.x, gy: g.y, a0: g.a, ang0: Math.atan2(e.clientY - r.top - g.y, e.clientX - r.left - g.x) };
+  }
+  function moveGuide(e) {
+    const g = G[gd.kind]; if (!g) return;
+    if (gd.two) {
+      const a = ptrs.get(gd.id), b = ptrs.get(gd.two.id); if (!a || !b) return;
+      const t = Math.atan2(b.y - a.y, b.x - a.x), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      g.a = snapAng(gd.two.a0 + t - gd.two.t0); g.x = gd.two.gx + mx - gd.two.mx; g.y = gd.two.gy + my - gd.two.my;
+    } else if (e.pointerId === gd.id) {
+      if (gd.knob) { const r = guidesEl.getBoundingClientRect(); g.a = snapAng(gd.a0 + Math.atan2(e.clientY - r.top - g.y, e.clientX - r.left - g.x) - gd.ang0); }
+      else { g.x = gd.gx + e.clientX - gd.x0; g.y = gd.gy + e.clientY - gd.y0; }
+    } else return;
+    g.x = clamp(g.x, 0, guidesEl.clientWidth); g.y = clamp(g.y, 0, guidesEl.clientHeight);
+    renderGuides();
+  }
+  function guideSecond(e) {
+    const g = G[gd.kind], a = ptrs.get(gd.id); if (!g || !a) return;
+    gd.two = { id: e.pointerId, t0: Math.atan2(e.clientY - a.y, e.clientX - a.x), mx: (a.x + e.clientX) / 2, my: (a.y + e.clientY) / 2, gx: g.x, gy: g.y, a0: g.a };
+  }
+  function endGuide(e) {
+    const g = G[gd.kind];
+    if (gd.two && (e.pointerId === gd.id || e.pointerId === gd.two.id)) {
+      // 두 손가락 중 하나를 떼면 남은 손가락으로 계속 옮기기
+      const rest = e.pointerId === gd.id ? gd.two.id : gd.id, p = ptrs.get(rest);
+      if (p && g) gd = { kind: gd.kind, type: gd.type, id: rest, knob: false, x0: p.x, y0: p.y, gx: g.x, gy: g.y, a0: g.a };
+      else { mode = null; gd = null; }
+      return;
+    }
+    if (e.pointerId === gd.id) { mode = null; gd = null; }
+  }
+
+  // ════════════════ 커튼: 쪽을 위에서부터 가려 두고 조금씩 내려 보여 주기 (저장하지 않음) ════════════════
+  const curtains = new Map();   // 쪽 객체 → 보이는 높이(pt)
+  function toggleCurtain() {
+    const pg = S.pages[S.cur]; if (!pg) return;
+    if (curtains.has(pg)) { curtains.delete(pg); toast('커튼을 걷었어요.'); }
+    else { curtains.set(pg, 0); toast('커튼: 아래로 끌거나 톡 누를 때마다 조금씩 보여요. 위로 끌면 다시 가려요.', 3600); }
+    renderCurtain(pg);
+  }
+  function renderCurtain(pg) {
+    if (!pg.el) return;
+    let el = pg.el.querySelector('.curtain');
+    if (!curtains.has(pg)) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div'); el.className = 'curtain';
+      el.innerHTML = '<span class="cg">▼ 끌어 내리거나 톡</span>';
+      pg.el.appendChild(el); bindCurtain(el, pg);
+    }
+    const y = curtains.get(pg);
+    el.style.top = y / pg.h * 100 + '%'; el.style.height = (1 - y / pg.h) * 100 + '%';
+  }
+  function bindCurtain(el, pg) {
+    let drag = null;
+    el.addEventListener('pointerdown', e => {
+      e.stopPropagation(); e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (x) {}
+      drag = { id: e.pointerId, y0: e.clientY, x0: e.clientX, v0: curtains.get(pg) || 0, t0: performance.now(), moved: false };
+    });
+    el.addEventListener('pointermove', e => {
+      e.stopPropagation();
+      if (!drag || e.pointerId !== drag.id) return;
+      const dy = (e.clientY - drag.y0) / S.scale;
+      if (Math.abs(e.clientY - drag.y0) > 6) drag.moved = true;
+      if (drag.moved) { curtains.set(pg, clamp(drag.v0 + dy, 0, pg.h)); renderCurtain(pg); }
+    });
+    const up = e => {
+      e.stopPropagation();
+      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag.moved) curtains.set(pg, clamp((curtains.get(pg) || 0) + pg.h * 0.12, 0, pg.h));
+      drag = null;
+      if (curtains.get(pg) >= pg.h - 0.5) { curtains.delete(pg); toast('끝까지 다 보였어요.'); }
+      renderCurtain(pg);
+    };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  }
+
+  // ════════════════ 필기 다시 보기: 이 쪽에 쓴 순서대로 다시 그림 ════════════════
+  let RP = null;
+  const rpDur = s => (s.k === 'pen' || s.k === 'hl') ? Math.max(180, s.p.length * (s.sh ? 6 : 9)) : 260;
+  function startReplay() {
+    stopReplay(); clearSel();
+    const pg = S.pages[S.cur], items = pg.ink.filter(s => s.k !== 'cover');
+    if (!items.length) { toast('이 쪽에는 다시 볼 필기가 없어요.'); return; }
+    RP = { pg, items, i: 0, t: 0, speed: 1, playing: true, last: performance.now(), scale: 0, kk: 0 };
+    drawPg(pg);
+    $('#replay').hidden = false; replayBar();
+    RP.raf = requestAnimationFrame(stepReplay);
+  }
+  function stepReplay(now) {
+    if (!RP) return;
+    RP.raf = 0;
+    const dt = Math.min(64, now - RP.last); RP.last = now;
+    const pg = RP.pg;
+    if (RP.scale !== S.scale || !liveCanvas.isConnected) { RP.kk = liveOn(pg); RP.scale = S.scale; drawPg(pg); }
+    const ctx = liveCanvas.getContext('2d');
+    if (RP.playing) {
+      RP.t += dt * RP.speed;
+      while (RP.i < RP.items.length && RP.t >= rpDur(RP.items[RP.i]) + 140) {
+        RP.t -= rpDur(RP.items[RP.i]) + 140;
+        paintItem(pg.el.querySelector('.inkc').getContext('2d'), RP.items[RP.i], inkK(pg));
+        RP.i++;
+      }
+      ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+      const s = RP.items[RP.i];
+      if (s && (s.k === 'pen' || s.k === 'hl')) {
+        const m = Math.ceil(s.p.length * Math.min(1, RP.t / rpDur(s)));
+        if (m >= 1) paintStroke(ctx, Object.assign({}, s, { p: s.p.slice(0, m) }), RP.kk);
+      }
+      if (RP.i >= RP.items.length) { RP.playing = false; RP.done = true; }
+      replayBar();
+    }
+    if (RP && RP.playing) RP.raf = requestAnimationFrame(stepReplay);
+  }
+  function replayBar() {
+    if (!RP) return;
+    const b = $('#replay');
+    b.querySelector('[data-a="rp-toggle"]').innerHTML = RP.done ? '처음부터' : RP.playing ? '멈춤' : '계속';
+    b.querySelector('[data-a="rp-speed"]').textContent = `빠르기 ×${RP.speed}`;
+    $('#rp-n').textContent = `${Math.min(RP.i + (RP.done ? 0 : 1), RP.items.length)} / ${RP.items.length}`;
+  }
+  function replayToggle() {
+    if (!RP) return;
+    if (RP.done) { const pg = RP.pg; Object.assign(RP, { i: 0, t: 0, done: false, playing: true }); drawPg(pg); }
+    else RP.playing = !RP.playing;
+    RP.last = performance.now(); replayBar();
+    if (RP.playing && !RP.raf) RP.raf = requestAnimationFrame(stepReplay);
+  }
+  function stopReplay() {
+    if (!RP) return;
+    const pg = RP.pg;
+    if (RP.raf) cancelAnimationFrame(RP.raf);
+    RP = null; liveCanvas.remove();
+    $('#replay').hidden = true;
+    if (pg.el && S.pages.includes(pg)) drawPg(pg);
+  }
+
   // ════════════════ 손·펜 입력 ════════════════
   const ptrs = new Map();   // pointerId → { x, y, type }
   let mode = null;          // act(한 손가락·펜으로 하는 일) | pan | pinch
@@ -790,9 +1145,16 @@
     try { docEl.setPointerCapture(e.pointerId); } catch (x) {}
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     stopFling();
+    if (RP) stopReplay();
     // 펜으로 쓰는 중에 닿는 손(손바닥)은 모두 무시. 반대로 손이 닿아 있어도 펜을 대면 펜이 이김
     const penBusy = mode === 'act' && act && act.type === 'pen';
     if (e.pointerType === 'touch' && penBusy) return;
+    // 자·각도기를 손가락으로 잡고 있을 때: 두 번째 손가락은 돌리기, 펜은 그대로 쓰기
+    if (mode === 'guide' && gd) {
+      if (e.pointerType === 'touch' && gd.type === 'touch' && !gd.two) { guideSecond(e); return; }
+      if (e.pointerType !== 'pen') return;
+      mode = null; gd = null;
+    }
     if (e.pointerType === 'pen' && (mode === 'pan' || mode === 'pinch')) { mode = null; pan = pinch = swipe = null; }
     if (e.pointerType === 'pen' && mode === 'act' && act && act.type !== 'pen') { cancelAct(); mode = null; }
     if (e.pointerType === 'pen' && !S.penSeen) {
@@ -810,10 +1172,13 @@
     }
     if (mode === 'act' || mode === 'pinch') return;   // 펜으로 쓰는 중에 닿은 손바닥 무시
     const byFinger = e.pointerType === 'touch';
-    if (byFinger && !fingerDraws()) { startPan(e); return; }
     const base = { type: e.pointerType, id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now() };
     // S펜 옆 버튼·애플펜슬 지우개 끝(버튼 32) → 지우개
     const tool = e.pointerType === 'pen' && (e.buttons & 32) ? 'erase' : S.tool;
+    // 자·각도기: 몸통은 잡아 옮기기, 가장자리는 펜으로 따라 긋기
+    const gh = (G.ruler || G.prot) ? guideHit(e.clientX, e.clientY, tool === 'draw' && (!byFinger || fingerDraws())) : null;
+    if (gh && (gh.part === 'body' || gh.part === 'knob')) { startGuide(e, gh); return; }
+    if (byFinger && !fingerDraws()) { startPan(e); return; }
     if (tool === 'laser') {
       mode = 'act'; act = Object.assign(base, { k: 'laser' });
       FX.trail.push({ x: e.clientX, y: e.clientY, t: performance.now(), gap: true }); FX.head = { x: e.clientX, y: e.clientY }; fxKick();
@@ -832,15 +1197,23 @@
       eraseAt(pg, pt, e);
       return;
     }
-    if (tool === 'cover') {
-      const el = document.createElement('div'); el.className = 'cover live';
+    if (tool === 'cover' || tool === 'clip') {
+      const el = document.createElement('div'); el.className = tool === 'clip' ? 'cover live clip' : 'cover live';
       pg.el.querySelector('.covers').appendChild(el);
-      act = Object.assign(base, { k: 'cover', pg, r: hit.r, p0: pt, p1: pt, el });
+      act = Object.assign(base, { k: tool, pg, r: hit.r, p0: pt, p1: pt, el });
       return;
     }
     if (tool === 'text' || tool === 'stamp') { act = Object.assign(base, { k: tool, pg, pt }); return; }
     if (tool === 'lasso') {
-      if (SEL && SEL.pg === pg && inBox(selBox(), pt)) { act = Object.assign(base, { k: 'move', pg, r: hit.r, p0: pt, dx: 0, dy: 0 }); return; }
+      if (SEL && SEL.pg === pg) {
+        const bx = selBox(), raw = selBox(0);
+        // 오른쪽 아래 ● 손잡이: 크기 바꾸기
+        if (Math.hypot(pt[0] - bx[2], pt[1] - bx[3]) * S.scale < 26) {
+          act = Object.assign(base, { k: 'scale', pg, r: hit.r, ox: raw[0], oy: raw[1], d0: Math.max(1e-3, Math.hypot(bx[2] - raw[0], bx[3] - raw[1])), f: 1 });
+          return;
+        }
+        if (inBox(bx, pt)) { act = Object.assign(base, { k: 'move', pg, r: hit.r, p0: pt, dx: 0, dy: 0 }); return; }
+      }
       clearSel();
       act = Object.assign(base, { k: 'lasso', pg, r: hit.r, pts: [pt], kk: liveOn(pg) });
       return;
@@ -850,14 +1223,26 @@
     const s = { k: pen.k, c: pen.c, w: SIZES[pen.k][S.size], p: [[...pt, pr]] };
     if (e.pointerType === 'pen' && pen.k === 'pen') s.pr = 1;
     act = Object.assign(base, { k: 'draw', pg, s, kk: liveOn(pg), r: hit.r, smooth: pr, hx: e.clientX, hy: e.clientY });
-    holdArm();
+    if (gh && (gh.part === 'edge' || gh.part === 'arc')) {
+      // 자·각도기를 따라 긋기: 반듯한 선(도형과 같은 방식으로 저장)
+      act.guide = gh; act.snapped = 'guide';
+      delete s.pr; s.sh = 1;
+      guideStroke(act, e.clientX, e.clientY);
+    } else holdArm();
     paintLive();
   });
+  function guideStroke(a, cx, cy) {
+    const pts = guidePoints(a, cx, cy); if (!pts) return;
+    const P = pts.map(([x, y]) => [r2((x - a.r.left) / S.scale), r2((y - a.r.top) / S.scale), 0.5]);
+    if (a.guide.part === 'edge') { if (!a.gStart) a.gStart = P[0]; a.s.p = [a.gStart, P[0]]; }
+    else a.s.p = P;
+  }
 
   docEl.addEventListener('pointermove', e => {
     const p = ptrs.get(e.pointerId);
     if (!p) return;
     p.x = e.clientX; p.y = e.clientY;
+    if (mode === 'guide' && gd) { moveGuide(e); return; }
     if (mode === 'pinch') {
       const t = touchList(); if (t.length < 2) return;
       const [a, b] = t, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -881,6 +1266,7 @@
         if (act.snapped) {
           // 직선으로 맞춘 뒤에는 끝점이 펜을 따라감
           if (act.snapped === 'line') { const q = toPt(e, act.r); act.s.p[1] = [r2(q[0]), r2(q[1]), 0.5]; schedLive(); }
+          if (act.snapped === 'guide') { guideStroke(act, e.clientX, e.clientY); schedLive(); }
           return;
         }
         // 빠르게 움직일 때 빠진 점까지 모두 받아서 펜 끝을 정확히 따라감
@@ -906,7 +1292,7 @@
         FX.head = { x: e.clientX, y: e.clientY }; fxKick();
         return;
       }
-      case 'cover': {
+      case 'cover': case 'clip': {
         act.p1 = toPt(e, act.r);
         const [x, y, w, h] = rectOf(act.p0, act.p1, act.pg);
         Object.assign(act.el.style, { left: x / act.pg.w * 100 + '%', top: y / act.pg.h * 100 + '%', width: w / act.pg.w * 100 + '%', height: h / act.pg.h * 100 + '%' });
@@ -920,7 +1306,13 @@
       case 'move': {
         const q = toPt(e, act.r);
         act.dx = q[0] - act.p0[0]; act.dy = q[1] - act.p0[1];
-        if (!act.raf) act.raf = requestAnimationFrame(() => { if (!act || act.k !== 'move') return; act.raf = 0; const i = S.pages.indexOf(act.pg); drawInk(i, { set: SEL.set, dx: act.dx, dy: act.dy }); showSel(act.dx, act.dy); });
+        if (!act.raf) act.raf = requestAnimationFrame(() => { if (!act || act.k !== 'move') return; act.raf = 0; const off = { set: SEL.set, dx: act.dx, dy: act.dy }; drawInk(S.pages.indexOf(act.pg), off); showSel(off); });
+        return;
+      }
+      case 'scale': {
+        const q = toPt(e, act.r);
+        act.f = clamp(Math.hypot(q[0] - act.ox, q[1] - act.oy) / act.d0, 0.1, 12);
+        if (!act.raf) act.raf = requestAnimationFrame(() => { if (!act || act.k !== 'scale') return; act.raf = 0; const off = { set: SEL.set, f: act.f, ox: act.ox, oy: act.oy }; drawInk(S.pages.indexOf(act.pg), off); showSel(off); });
         return;
       }
     }
@@ -928,6 +1320,7 @@
 
   function endPointer(e) {
     ptrs.delete(e.pointerId);
+    if (mode === 'guide' && gd) { endGuide(e); return; }
     if (mode === 'pinch') {
       if (touchList().length < 2) { mode = null; pinch = null; updateVisible(); }
       return;
@@ -957,15 +1350,17 @@
         break;
       }
       case 'cover': commitCover(a); break;
+      case 'clip': commitClip(a); break;
       case 'text': act = null; if (isTap(a, e)) openText(a.pg, a.pt); break;
       case 'stamp': act = null; if (isTap(a, e)) placeStamp(a.pg, a.pt); break;
       case 'lasso': commitLasso(a); break;
       case 'move': commitMove(a); break;
+      case 'scale': commitScale(a); break;
     }
   }
   docEl.addEventListener('pointerup', endPointer);
   docEl.addEventListener('pointercancel', e => {
-    if (mode === 'act' && act && e.pointerId === act.id && ['draw', 'lasso', 'cover', 'move'].includes(act.k)) { cancelAct(); mode = null; ptrs.delete(e.pointerId); return; }
+    if (mode === 'act' && act && e.pointerId === act.id && ['draw', 'lasso', 'cover', 'clip', 'move', 'scale'].includes(act.k)) { cancelAct(); mode = null; ptrs.delete(e.pointerId); return; }
     endPointer(e);
   });
   docEl.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; updateVisible(); }); }, { passive: true });
@@ -1009,8 +1404,8 @@
     if (!act) return;
     if (act.raf) cancelAnimationFrame(act.raf);
     clearTimeout(holdTimer);
-    if (act.k === 'cover' && act.el) act.el.remove();
-    if (act.k === 'move') drawPg(act.pg), showSel();
+    if ((act.k === 'cover' || act.k === 'clip') && act.el) act.el.remove();
+    if (act.k === 'move' || act.k === 'scale') drawPg(act.pg), showSel();
     if (act.k === 'erase') endErase();
     if (act.k === 'laser') { FX.head = null; fxKick(); }
     liveCanvas.remove(); act = null;
@@ -1056,6 +1451,7 @@
     let hit = false;
     for (let j = list.length - 1; j >= 0; j--) {
       const s = list[j];
+      if (s.k === 'img') continue;   // 사진은 지우개로 안 지워짐 (사진 위 필기만). 사진은 올가미로 골라 지우기
       if (!hitItem(s, x, y, act.part ? R - s.w / 2 : R)) continue;
       let pieces = null;
       if (act.part && (s.k === 'pen' || s.k === 'hl')) { pieces = splitStroke(s, x, y, R); if (!pieces) continue; }
@@ -1080,7 +1476,7 @@
     const pieces = []; let cur = [];
     dense.forEach((q, i) => { if (keep[i]) cur.push(q); else { if (cur.length > 1) pieces.push(cur); cur = []; } });
     if (cur.length > 1) pieces.push(cur);
-    return pieces.map(p => Object.assign({}, s, { p }));
+    return pieces.map(p => { const o = Object.assign({}, s, { p }); delete o.st; return o; });   // 잘린 도장은 점수에 안 셈
   }
   function endErase() {
     const a = act; act = null;
@@ -1106,11 +1502,12 @@
 
   // 채점 도장: 톡 누른 자리에 ○ ✓ ✗ (빨간 선이라 지우개·되돌리기도 그대로 됨)
   function placeStamp(pg, [x, y]) {
-    const r = STAMP_R[S.size], w = STAMP_W[S.size], mk = p => ({ k: 'pen', c: STAMP_C, w, sh: 1, p: p.map(q => [r2(q[0]), r2(q[1]), 0.5]) });
+    // st: 점수 셀 때 쓰는 표시 (○·✓ 맞음, ✗ 틀림 — 가위표는 첫 획에만)
+    const r = STAMP_R[S.size], w = STAMP_W[S.size], mk = (p, st) => Object.assign({ k: 'pen', c: STAMP_C, w, sh: 1, p: p.map(q => [r2(q[0]), r2(q[1]), 0.5]) }, st ? { st } : {});
     let list;
-    if (S.stamp === 'o') list = [mk(Array.from({ length: 49 }, (_, i) => { const t = i / 48 * Math.PI * 2; return [x + r * Math.cos(t), y + r * Math.sin(t)]; }))];
-    else if (S.stamp === 'v') list = [mk([[x - r * 0.85, y - r * 0.05], [x - r * 0.25, y + r * 0.65], [x + r * 0.95, y - r * 0.85]])];
-    else list = [mk([[x - r * 0.7, y - r * 0.7], [x + r * 0.7, y + r * 0.7]]), mk([[x + r * 0.7, y - r * 0.7], [x - r * 0.7, y + r * 0.7]])];
+    if (S.stamp === 'o') list = [mk(Array.from({ length: 49 }, (_, i) => { const t = i / 48 * Math.PI * 2; return [x + r * Math.cos(t), y + r * Math.sin(t)]; }), 'o')];
+    else if (S.stamp === 'v') list = [mk([[x - r * 0.85, y - r * 0.05], [x - r * 0.25, y + r * 0.65], [x + r * 0.95, y - r * 0.85]], 'v')];
+    else list = [mk([[x - r * 0.7, y - r * 0.7], [x + r * 0.7, y + r * 0.7]], 'x'), mk([[x + r * 0.7, y - r * 0.7], [x - r * 0.7, y + r * 0.7]])];
     pg.ink.push(...list);
     record({ t: 'add', items: list.map(s => ({ pg, s })) });
     drawPg(pg);
@@ -1129,31 +1526,40 @@
   function commitLasso(a) {
     if (a.raf) cancelAnimationFrame(a.raf);
     liveCanvas.remove(); act = null;
-    if (a.pts.length < 4) return;
     const set = new Set();
-    for (const s of a.pg.ink) {
-      if (s.k === 'cover' || s.k === 'text') { const [x0, y0, x1, y1] = bounds(s); if (inPoly((x0 + x1) / 2, (y0 + y1) / 2, a.pts)) set.add(s); }
-      else if (s.p.filter(q => inPoly(q[0], q[1], a.pts)).length >= s.p.length / 2) set.add(s);
+    if (pathLen(a.pts) * S.scale < 12) {
+      // 톡 → 그 자리의 맨 위 항목 하나 (사진·글자를 고르기 쉽게)
+      const [x, y] = a.pts[0];
+      for (let j = a.pg.ink.length - 1; j >= 0; j--) if (hitItem(a.pg.ink[j], x, y, 6 / S.scale)) { set.add(a.pg.ink[j]); break; }
+      if (!set.size) return;
+    } else {
+      if (a.pts.length < 4) return;
+      for (const s of a.pg.ink) {
+        if (isBox(s)) { const [x0, y0, x1, y1] = bounds(s); if (inPoly((x0 + x1) / 2, (y0 + y1) / 2, a.pts)) set.add(s); }
+        else if (s.p.filter(q => inPoly(q[0], q[1], a.pts)).length >= s.p.length / 2) set.add(s);
+      }
+      if (!set.size) { toast('둘러싼 안에 필기가 없어요.'); return; }
     }
-    if (!set.size) { toast('둘러싼 안에 필기가 없어요.'); return; }
     SEL = { pg: a.pg, set };
     showSel();
   }
-  function selBox() {
+  function selBox(padPx = 6) {
     let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
     for (const s of SEL.set) { const [x0, y0, x1, y1] = bounds(s); a = Math.min(a, x0); b = Math.min(b, y0); c = Math.max(c, x1); d = Math.max(d, y1); }
-    const pad = 6 / S.scale;
+    const pad = padPx / S.scale;
     return [a - pad, b - pad, c + pad, d + pad];
   }
   const inBox = (bx, [x, y]) => x >= bx[0] && x <= bx[2] && y >= bx[1] && y <= bx[3];
-  function showSel(dx = 0, dy = 0) {
+  function showSel(off) {
     const old = document.querySelector('.selbox'); if (old) old.remove();
     if (!SEL) { $('#selbar').hidden = true; return; }
-    const pg = SEL.pg, [a, b, c, d] = selBox(), el = document.createElement('div');
+    const pg = SEL.pg, [a0, b0, c0, d0] = selBox(), el = document.createElement('div');
+    const [a, b] = off ? xf(off, a0, b0) : [a0, b0], [c, d] = off ? xf(off, c0, d0) : [c0, d0];
     el.className = 'selbox';
-    Object.assign(el.style, { left: (a + dx) / pg.w * 100 + '%', top: (b + dy) / pg.h * 100 + '%', width: (c - a) / pg.w * 100 + '%', height: (d - b) / pg.h * 100 + '%' });
+    el.innerHTML = '<span class="selh"></span>';
+    Object.assign(el.style, { left: a / pg.w * 100 + '%', top: b / pg.h * 100 + '%', width: (c - a) / pg.w * 100 + '%', height: (d - b) / pg.h * 100 + '%' });
     pg.el.appendChild(el);
-    $('#sel-n').textContent = `${SEL.set.size}개 골랐어요 · 끌어서 옮겨요`;
+    $('#sel-n').textContent = `${SEL.set.size}개 골랐어요 · 끌어서 옮기고 ●로 크기`;
     $('#selbar').hidden = false;
   }
   function clearSel() {
@@ -1167,6 +1573,15 @@
       const items = [...SEL.set].map(s => ({ pg: a.pg, s }));
       for (const it of items) translate(it.s, a.dx, a.dy);
       record({ t: 'move', items, dx: a.dx, dy: a.dy });
+    }
+    drawPg(a.pg); showSel();
+  }
+  function commitScale(a) {
+    if (a.raf) cancelAnimationFrame(a.raf);
+    act = null;
+    if (Math.abs(a.f - 1) > 0.01) {
+      const items = [...SEL.set].map(s => { const before = geo(s); scaleItem(s, a.ox, a.oy, a.f); return { pg: a.pg, s, before, after: geo(s) }; });
+      record({ t: 'set', items });
     }
     drawPg(a.pg); showSel();
   }
@@ -1212,6 +1627,12 @@
       for (const it of h.items) { translate(it.s, k * h.dx, k * h.dy); touched.add(it.pg); }
     } else if (h.t === 'text') {
       Object.assign(h.s, back ? h.before : h.after); touched.add(h.pg);
+    } else if (h.t === 'set') {
+      for (const it of h.items) { Object.assign(it.s, JSON.parse(JSON.stringify(back ? it.before : it.after))); touched.add(it.pg); }
+    } else if (h.t === 'order') {
+      setOrder(back ? h.before : h.after);
+      if (!$('#thumbs').hidden) renderThumbs();
+      return;
     } else if (h.t === 'page') {
       if (h.ins !== back) insertPage(h.at, h.pg); else removePage(h.pg);
       goPage(S.pages.indexOf(h.pg) >= 0 ? S.pages.indexOf(h.pg) : Math.min(h.at, S.pages.length - 1));
@@ -1247,7 +1668,29 @@
     insertPage(at, pg);
     record({ t: 'page', ins: true, at, pg });
     goPage(at);
-    toast(`${at + 1}쪽에 ${PATTERN[kind]}를 넣었어요. 보내기·저장한 PDF에도 들어가요.`);
+    toast(`${at + 1}쪽에 ${josa(PATTERN[kind], '을', '를')} 넣었어요. 보내기·저장한 PDF에도 들어가요.`);
+  }
+  // 쪽 정리(옮기기·복사·빼기): 쪽 객체 배열을 통째로 바꿈. 빠진 쪽도 객체는 남아서 되돌리기로 살아남
+  function setOrder(arr) {
+    for (const pg of S.pages) if (!arr.includes(pg)) { if (pg.el) pg.el.remove(); queue.delete(pg); }
+    S.pages = arr.slice();
+    for (const pg of S.pages) pagesEl.appendChild(pg.el || makePageEl(pg));
+    if (S.cur >= S.pages.length) S.cur = S.pages.length - 1;
+    renumber(); layout(); updateVisible();
+  }
+  const canDrop = pg => S.pages.length > 1 && (pg.blank || S.pages.filter(p => !p.blank && p.src === pg.src).length > 1);
+  function pageOp(op, i) {
+    const before = S.pages.slice(), arr = S.pages.slice(), pg = arr[i];
+    if (!pg) return;
+    if (op === 'left' && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+    else if (op === 'right' && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+    else if (op === 'copy') arr.splice(i + 1, 0, newPage({ src: pg.src, blank: pg.blank, w: pg.w, h: pg.h, vp: pg.vp }, JSON.parse(JSON.stringify(pg.ink))));
+    else if (op === 'del' && canDrop(pg)) arr.splice(i, 1);
+    else return;
+    setOrder(arr);
+    record({ t: 'order', before, after: arr.slice() });
+    renderThumbs();
+    if (op === 'copy') toast(`${i + 1}쪽을 필기와 함께 복사해 ${i + 2}쪽에 넣었어요.`);
   }
   function removeBlank(pg) {
     const at = S.pages.indexOf(pg);
@@ -1267,13 +1710,13 @@
     clearTimeout(saveTimer); saveTimer = null;
     if (!S.meta || !S.pages.length) return;
     const pages = {};
-    let n = 0;
-    S.pages.forEach((pg, i) => { if (pg.ink.length) { pages[i] = pg.ink; n += pg.ink.length; } });
+    let n = 0, np = 0;
+    S.pages.forEach((pg, i) => { if (pg.ink.length) { pages[i] = pg.ink; n += pg.ink.length; if (pg.ink.some(s => s.k !== 'cover')) np++; } });
     const rec = { id: S.meta.id, pages, updated: Date.now() };
-    if (S.pages.some(pg => pg.blank)) rec.order = S.pages.map(pg => pg.blank ? { b: pg.blank, w: pg.w, h: pg.h } : { s: pg.src });
+    if (S.pages.some((pg, i) => pg.blank || pg.src !== i)) rec.order = S.pages.map(pg => pg.blank ? { b: pg.blank, w: pg.w, h: pg.h } : { s: pg.src });
     try {
       await DB.put('ink', rec);
-      if ((S.meta.inkCount || 0) !== n || S.meta.pages !== S.pages.length) { S.meta.inkCount = n; S.meta.pages = S.pages.length; await DB.put('meta', S.meta); }
+      if ((S.meta.inkCount || 0) !== n || S.meta.pages !== S.pages.length || (S.meta.inkPages || 0) !== np) { S.meta.inkCount = n; S.meta.inkPages = np; S.meta.pages = S.pages.length; await DB.put('meta', S.meta); }
     } catch (e) { toast('필기를 저장하지 못했어요. 저장 공간을 확인해 주세요.', 4000); }
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && S.meta) { flushInk(); S.meta.lastPage = S.cur; DB.put('meta', S.meta).catch(() => {}); } });
@@ -1287,6 +1730,7 @@
   function goPage(i, smooth = false) {
     i = Math.max(0, Math.min(S.pages.length - 1, i));
     const changedPage = i !== S.cur;
+    if (changedPage && RP) stopReplay();
     S.cur = i;
     if (S.present) {
       if (changedPage) S.zoom = 1;   // 새 쪽은 화면에 꽉 차게
@@ -1332,6 +1776,7 @@
   function stampButtons(showLabel) {
     return Object.entries(STAMPS).map(([k, label]) => `<button class="tb stamp" type="button" data-stamp="${k}" aria-pressed="${S.tool === 'stamp' && S.stamp === k}" aria-label="${label} 도장" title="${label} 도장"><span class="glyph">${{ o: '○', v: '✓', x: '✗' }[k]}</span>${showLabel && k === 'o' ? '<span class="lbl">도장</span>' : ''}</button>`).join('');
   }
+  const scoreButton = showLabel => `<button class="tb stamp" type="button" data-a="score" aria-label="점수 매기기" title="점수 매기기"><span class="glyph sc">점</span>${showLabel ? '<span class="lbl">점수</span>' : ''}</button>`;
   function renderTools() {
     const kind = S.meta && S.meta.kind, sheet = kind === 'sheet', grade = kind === 'grade';
     const fd = fingerDraws();
@@ -1346,9 +1791,14 @@
       <span class="sep"></span>
       ${tb('laser', I.laser, '레이저', S.tool === 'laser')}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover')}
+      ${tb('curtain', I.curtain, '커튼')}
       ${tb('text', I.text, '글자', S.tool === 'text')}
       ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso')}
-      ${grade ? stampButtons(true) : ''}
+      ${tb('photo', I.photo, '사진')}
+      ${tb('ruler', I.ruler, '자', !!G.ruler)}
+      ${tb('prot', I.prot, '각도기', !!G.prot)}
+      ${grade ? stampButtons(true) + scoreButton(true) : ''}
+      ${S.tool === 'clip' ? tb('clip', I.cover, '오답 담기', true) : ''}
       <span class="sep"></span>
       ${tb('undo', I.undo, '되돌리기', null, false)}
       ${tb('redo', I.redo, '다시 하기', null, false)}
@@ -1378,7 +1828,10 @@
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
       ${tb('laser', I.laser, '레이저', S.tool === 'laser', false)}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
-      ${grade ? stampButtons(false) : ''}
+      ${tb('curtain', I.curtain, '커튼', null, false)}
+      ${tb('ruler', I.ruler, '자', !!G.ruler, false)}
+      ${tb('prot', I.prot, '각도기', !!G.prot, false)}
+      ${grade ? stampButtons(false) + scoreButton(false) : ''}
       ${tb('undo', I.undo, '되돌리기', null, false)}
       <span class="sep"></span>
       ${tb('timer', I.timer, '타이머', null, false)}
@@ -1395,7 +1848,8 @@
     laser: '레이저: 펜으로 가리키면 빨간 꼬리가 잠깐 보였다 사라져요. 필기는 남지 않아요.',
     cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
-    lasso: '올가미: 필기를 빙 둘러 그려서 골라요. 고른 것은 끌어서 옮기거나 복제·지울 수 있어요.',
+    lasso: '올가미: 필기를 빙 둘러 그리거나 톡 눌러 골라요. 끌어서 옮기고, 오른쪽 아래 ●로 크기를 바꿔요.',
+    clip: '오답 담기: 틀린 문제를 상자로 둘러요. 오답 노트에 그림으로 들어가요. 다 담았으면 펜을 고르세요.',
   };
   function setTool(t) {
     if (S.tool !== t && TOOL_TIPS[t]) toast(TOOL_TIPS[t], 3600);
@@ -1434,6 +1888,14 @@
         else setTool('erase');
         break;
       case 'laser': case 'cover': case 'text': case 'lasso': setTool(a); break;
+      case 'clip': setTool('draw'); break;
+      case 'curtain': toggleCurtain(); break;
+      case 'ruler': case 'prot': toggleGuide(a); break;
+      case 'photo': photoPage = S.pages[S.cur]; $('#img-in').click(); break;
+      case 'score': openScore(); break;
+      case 'rp-toggle': replayToggle(); break;
+      case 'rp-speed': if (RP) { RP.speed = RP.speed >= 4 ? 1 : RP.speed * 2; replayBar(); } break;
+      case 'rp-stop': stopReplay(); break;
       case 'size': S.size = (S.size + 1) % 3; saveSettings(); renderTools(); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
@@ -1480,6 +1942,12 @@
       <p class="mh">빈 쪽 넣기 <small>${n}쪽 뒤에 들어가요</small></p>
       <div class="grid-btns">${Object.entries(PATTERN).map(([k, v]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">${v}</button>`).join('')}</div>
       ${pg.blank ? `<button class="btn ghost wide${armed === 'rm' ? ' armed' : ''}" type="button" data-m="rm">${armed === 'rm' ? '한 번 더 누르면 뺄게요' : `이 넣은 쪽 빼기 (${n}쪽)`}</button>` : ''}
+      <p class="mh">수업</p>
+      <button class="btn ghost wide" type="button" data-m="pick">발표자 뽑기</button>
+      <button class="btn ghost wide" type="button" data-m="replay">필기 다시 보기 <small>(${n}쪽, 쓴 순서대로)</small></button>
+      <p class="mh">숙제</p>
+      ${isGrade() ? '<button class="btn ghost wide" type="button" data-m="score">점수 매기기 <small>(도장 ○ ✓ ✗ 세기)</small></button>' : ''}
+      ${S.meta.kind !== 'wrong' ? '<button class="btn ghost wide" type="button" data-m="clip">오답 노트에 담기 <small>(틀린 문제를 상자로)</small></button>' : '<p class="hint">담은 문제 옆 빈 곳에 다시 풀어 봐요. [PDF로 저장]으로 모아서 인쇄할 수도 있어요.</p>'}
       <p class="mh">쓰기</p>
       <button class="btn ghost wide" type="button" data-m="snap">도형 맞춤: <b>${S.snap ? '켜짐' : '꺼짐'}</b></button>
       <p class="hint">선을 긋고 펜을 떼지 않은 채 잠깐 멈추면 반듯한 직선·원·삼각형·사각형으로 바뀌어요.</p>
@@ -1489,6 +1957,10 @@
     const fn = b => {
       const m = b.dataset.m;
       if (m === 'add') { closeModal(); addBlank(b.dataset.v); return; }
+      if (m === 'pick') { closeModal(); openPicker(); return; }
+      if (m === 'replay') { closeModal(); startReplay(); return; }
+      if (m === 'score') { closeModal(); openScore(); return; }
+      if (m === 'clip') { closeModal(); setTool('clip'); return; }
       if (m === 'rm') { if (armed !== 'rm') { armed = 'rm'; showModal(html(), fn); return; } closeModal(); removeBlank(pg); return; }
       if (m === 'snap') { S.snap = !S.snap; saveSettings(); armed = ''; showModal(html(), fn); return; }
       if (m === 'emode') { S.eraseMode = S.eraseMode === 'part' ? 'stroke' : 'part'; saveSettings(); renderTools(); armed = ''; showModal(html(), fn); return; }
@@ -1645,16 +2117,24 @@
   }
 
   // ════════════════ 쪽 목록 ════════════════
-  let thumbObs = null;
+  let thumbObs = null, thumbEdit = false;
   function openThumbs() {
+    thumbEdit = false;
+    $('#thumbs').hidden = false;
+    renderThumbs();
+    const cur = $('#thumbs-grid .thumb.cur'); if (cur) cur.scrollIntoView({ block: 'center' });
+  }
+  function renderThumbs() {
     const box = $('#thumbs'), grid = $('#thumbs-grid');
-    grid.innerHTML = S.pages.map((pg, i) => `<button class="thumb${i === S.cur ? ' cur' : ''}" type="button" data-go="${i}">
-      <span class="tp" style="aspect-ratio:${pg.w} / ${pg.h}"></span><span class="${pg.ink.length ? 'has-ink' : ''}">${i + 1}${pg.blank ? ' · 넣은 쪽' : ''}${pg.ink.length ? ' ✎' : ''}</span></button>`).join('');
-    box.hidden = false;
+    box.classList.toggle('editing', thumbEdit);
+    box.querySelector('[data-t="edit"]').textContent = thumbEdit ? '정리 끝' : '쪽 정리';
+    $('#thumbs-hint').textContent = thumbEdit ? '◀ ▶로 옮기고, 복사·빼기. 되돌리기로 돌릴 수 있어요.' : '';
+    grid.innerHTML = S.pages.map((pg, i) => `<div class="thumbw"><button class="thumb${i === S.cur ? ' cur' : ''}" type="button" data-go="${i}">
+      <span class="tp" style="aspect-ratio:${pg.w} / ${pg.h}"></span><span class="${pg.ink.length ? 'has-ink' : ''}">${i + 1}${pg.blank ? ' · ' + (PATTERN[pg.blank] || '넣은 쪽') : ''}${pg.ink.length ? ' ✎' : ''}</span></button>
+      ${thumbEdit ? `<div class="tops"><button type="button" data-op="left" data-i="${i}" aria-label="앞으로"${i ? '' : ' disabled'}>◀</button><button type="button" data-op="right" data-i="${i}" aria-label="뒤로"${i < S.pages.length - 1 ? '' : ' disabled'}>▶</button><button type="button" data-op="copy" data-i="${i}">복사</button>${canDrop(pg) ? `<button type="button" data-op="del" data-i="${i}">빼기</button>` : ''}</div>` : ''}</div>`).join('');
     if (thumbObs) thumbObs.disconnect();
     thumbObs = new IntersectionObserver(entries => entries.forEach(en => { if (en.isIntersecting) { thumbObs.unobserve(en.target); drawThumb(en.target); } }), { root: box, rootMargin: '200px' });
     grid.querySelectorAll('.thumb').forEach(t => thumbObs.observe(t));
-    const cur = grid.querySelector('.thumb.cur'); if (cur) cur.scrollIntoView({ block: 'center' });
   }
   async function drawThumb(btn) {
     const i = Number(btn.dataset.go), pg = S.pages[i], tp = btn.querySelector('.tp');
@@ -1668,14 +2148,21 @@
         await page.render({ canvasContext: c.getContext('2d', { alpha: false }), viewport: vp }).promise;
       }
       const ctx = c.getContext('2d');
+      await loadImgs(pg.ink);
       for (const s of pg.ink) paintItem(ctx, s, k);
       tp.appendChild(c);
     } catch (e) {}
   }
   $('#thumbs').addEventListener('click', e => {
-    const t = e.target.closest('[data-go]');
+    const t = e.target.closest('[data-t]');
+    if (t) { if (t.dataset.t === 'edit') { thumbEdit = !thumbEdit; renderThumbs(); } else $('#thumbs').hidden = true; return; }
+    const op = e.target.closest('[data-op]');
+    if (op) { pageOp(op.dataset.op, Number(op.dataset.i)); return; }
+    if (e.target.closest('.thumbs-bar')) return;
+    const g = e.target.closest('[data-go]');
+    if (g && thumbEdit) return;
     $('#thumbs').hidden = true;
-    if (t) goPage(Number(t.dataset.go));
+    if (g) goPage(Number(g.dataset.go));
   });
 
   // ════════════════ PDF로 내보내기 ════════════════
@@ -1685,8 +2172,8 @@
   async function exportPdf() {
     await flushInk();
     await loadScript(`assets/vendor/pdf-lib.min.js${V}`);
-    const { PDFDocument, rgb, LineCapStyle } = window.PDFLib;
-    const rec = await DB.get('pdf', S.meta.id);
+    const { PDFDocument, rgb, LineCapStyle, StandardFonts } = window.PDFLib;
+    const rec = S.pdf ? await DB.get('pdf', S.meta.id) : null;
     const hex = c => rgb(parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255);
     const vps = [];
     for (const pg of S.pages) vps.push(pg.blank ? { width: pg.w, height: pg.h, convertToPdfPoint: (x, y) => [x, pg.h - y] } : pg.vp || (await S.pdf.getPage(pg.src + 1)).getViewport({ scale: 1 }));
@@ -1697,15 +2184,28 @@
       const b = await new Promise(r => c.toBlob(r, 'image/png'));
       return b.arrayBuffer();
     };
+    for (const pg of S.pages) await loadImgs(pg.ink);
     try {
-      const doc = await PDFDocument.load(rec.data.slice(0), { ignoreEncryption: false, updateMetadata: false });
-      S.pages.forEach((pg, d) => {
-        if (!pg.blank) return;
-        const page = doc.insertPage(d, [pg.w, pg.h]);
-        const col = pg.blank === 'grid' ? rgb(0.863, 0.89, 0.925) : rgb(0.773, 0.816, 0.871);
-        for (const [x0, y0, x1, y1] of patternLines(pg)) page.drawLine({ start: { x: x0, y: pg.h - y0 }, end: { x: x1, y: pg.h - y1 }, thickness: 0.6, color: col });
-      });
-      const pages = doc.getPages();
+      // PDF 쪽이 원래 순서 그대로면 원본에 덧그리고, 옮기거나 복사한 쪽이 있으면 새 PDF에 쪽을 옮겨 담음 (글자는 그대로 선명)
+      const src = rec ? await PDFDocument.load(rec.data.slice(0), { ignoreEncryption: false, updateMetadata: false }) : null;
+      const srcIdx = S.pages.filter(pg => !pg.blank).map(pg => pg.src);
+      let doc;
+      if (!src) doc = await PDFDocument.create();
+      else if (srcIdx.length === src.getPageCount() && srcIdx.every((s, k) => s === k)) doc = src;
+      else { doc = await PDFDocument.create(); for (const p of await doc.copyPages(src, srcIdx)) doc.addPage(p); }
+      let font = null;
+      for (let d = 0; d < S.pages.length; d++) {
+        const pg = S.pages[d];
+        if (!pg.blank) continue;
+        const page = doc.insertPage(d, [pg.w, pg.h]), { L, T } = patternSpec(pg);
+        for (const [x0, y0, x1, y1, c, w] of L) page.drawLine({ start: { x: x0, y: pg.h - y0 }, end: { x: x1, y: pg.h - y1 }, thickness: w, color: hex(c), lineCap: LineCapStyle.Round });
+        if (T.length && !font) font = await doc.embedFont(StandardFonts.Helvetica);
+        for (const [x, y, t, size, al, base] of T) {
+          const tw = font.widthOfTextAtSize(t, size);
+          page.drawText(t, { x: al === 'c' ? x - tw / 2 : al === 'r' ? x - tw : x, y: pg.h - y - (base === 'top' ? size * 0.74 : size * 0.36), size, font, color: hex(PC.axis) });
+        }
+      }
+      const pages = doc.getPages(), imgs = new Map();
       for (let d = 0; d < S.pages.length; d++) {
         const list = S.pages[d].ink, page = pages[d], vp = vps[d];
         if (!page || !list.length) continue;
@@ -1714,6 +2214,17 @@
           if (s.k === 'text') {
             const img = await doc.embedPng(await textPng(s)), q = vp.convertToPdfPoint(s.x, s.y + s.th);
             page.drawImage(img, { x: q[0], y: q[1], width: s.tw, height: s.th });
+            continue;
+          }
+          if (s.k === 'img') {
+            let img = imgs.get(s.src);
+            if (!img) {
+              const bytes = await fromB64(s.src.slice(s.src.indexOf(',') + 1));
+              img = /^data:image\/png/.test(s.src) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+              imgs.set(s.src, img);
+            }
+            const q = vp.convertToPdfPoint(s.x, s.y + s.ih);
+            page.drawImage(img, { x: q[0], y: q[1], width: s.iw, height: s.ih });
             continue;
           }
           if (s.k !== 'pen' && s.k !== 'hl') continue;
@@ -1839,6 +2350,246 @@
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
+  // ════════════════ 사진 넣기 ════════════════
+  // 긴 쪽 1600px까지 줄여 JPEG로 필기 항목에 담음 (백업·되돌리기·복제가 그대로 됨)
+  let photoPage = null;
+  async function readPhoto(f) {
+    const url = URL.createObjectURL(f);
+    try {
+      const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+      const sc = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(im.naturalWidth * sc)); c.height = Math.max(1, Math.round(im.naturalHeight * sc));
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(im, 0, 0, c.width, c.height);
+      return { src: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  function placePhoto(pg, ph) {
+    const f = Math.min(pg.w * 0.6 / ph.w, pg.h * 0.5 / ph.h), iw = r2(ph.w * f), ih = r2(ph.h * f);
+    // 화면 가운데(그 쪽 안)에
+    let cx = pg.w / 2, cy = pg.h / 2;
+    if (pg.el) {
+      const r = docEl.getBoundingClientRect(), pr = pg.el.getBoundingClientRect();
+      cx = clamp((r.left + r.width / 2 - pr.left) / S.scale, iw / 2, pg.w - iw / 2);
+      cy = clamp((r.top + r.height / 2 - pr.top) / S.scale, ih / 2, pg.h - ih / 2);
+    }
+    const s = { k: 'img', x: r2(cx - iw / 2), y: r2(cy - ih / 2), iw, ih, src: ph.src };
+    pg.ink.push(s);
+    record({ t: 'add', items: [{ pg, s }] });
+    if (S.tool !== 'lasso') { S.tool = 'lasso'; saveSettings(); renderTools(); }
+    SEL = { pg, set: new Set([s]) };
+    drawPg(pg); showSel();
+    toast('사진을 넣었어요. 끌어서 옮기고, 오른쪽 아래 ●를 끌어 크기를 바꿔요.', 3600);
+  }
+  $('#img-in').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    const pg = photoPage || S.pages[S.cur]; photoPage = null;
+    if (!f || !pg || !S.pages.includes(pg)) return;
+    toast('사진을 넣는 중…', 0);
+    try { placePhoto(pg, await readPhoto(f)); } catch (err) { toast('이 사진은 열 수 없어요. 다른 사진(JPG·PNG)을 골라 주세요.', 4000); }
+  });
+
+  // ════════════════ 오답 노트 ════════════════
+  // 틀린 문제를 상자로 두르면 그 부분(PDF + 고르면 내 필기)을 그림으로 떠서 '오답 노트' 문서(A4 백지 쪽들)에 차례로 붙임
+  function commitClip(a) {
+    act = null;
+    const [x, y, w, h] = rectOf(a.p0, a.p1, a.pg);
+    if (w * S.scale < 20 || h * S.scale < 20) { a.el.remove(); toast('담을 문제를 상자로 크게 둘러 주세요.'); return; }
+    const pg = a.pg, n = S.pages.indexOf(pg) + 1, hasInk = pg.ink.some(s => s.k !== 'cover' && (() => { const b = bounds(s); return b[0] < x + w && b[2] > x && b[1] < y + h && b[3] > y; })());
+    showModal(`
+      <h2>오답 노트에 담기</h2>
+      <p>고른 부분(${n}쪽)을 오답 노트에 담아요. 다시 풀 거면 [문제만 담기]가 좋아요.</p>
+      <p class="msg" id="clip-msg" role="status"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">취소</button>${hasInk ? '<button class="btn ghost" type="button" data-m="ink">내 필기까지 담기</button>' : ''}<button class="btn" type="button" data-m="clean">문제만 담기</button></div>`, async b => {
+      if ((b.dataset.m !== 'ink' && b.dataset.m !== 'clean') || b.disabled) return;
+      $('#modal-card').querySelectorAll('[data-m]').forEach(x => { x.disabled = true; });
+      $('#clip-msg').textContent = '담는 중이에요…';
+      try {
+        const src = await captureRegion(pg, [x, y, w, h], b.dataset.m === 'ink');
+        const count = await addToWrong(src, w, h, `${S.meta.name.replace(/\.pdf$/i, '')} · ${n}쪽 · ${fmtDay(Date.now())}`);
+        closeModal();
+        toast(`오답 노트에 담았어요. (모두 ${count}문제) 첫 화면의 ‘오답 노트’에서 다시 풀어요.`, 3600);
+      } catch (err) { const m = $('#clip-msg'); if (m) { m.className = 'msg err'; m.textContent = '담지 못했어요. 저장 공간을 확인해 주세요.'; } $('#modal-card').querySelectorAll('[data-m]').forEach(x => { x.disabled = false; }); }
+    }, () => a.el.remove());
+  }
+  const fmtDay = t => { try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' }).format(new Date(t)); } catch (e) { return ''; } };
+  async function captureRegion(pg, [x, y, w, h], withInk) {
+    const k = Math.min(3, 1400 / Math.max(w, h)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    const ctx = c.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    if (pg.blank) { ctx.save(); ctx.translate(-x * k, -y * k); paintPattern(ctx, pg, k); ctx.restore(); }
+    else {
+      const page = await S.pdf.getPage(pg.src + 1), vp = page.getViewport({ scale: k, offsetX: -x * k, offsetY: -y * k });
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    }
+    if (withInk) {
+      await loadImgs(pg.ink);
+      ctx.save(); ctx.translate(-x * k, -y * k);
+      for (const s of pg.ink) paintItem(ctx, s, k);
+      ctx.restore();
+    } else {
+      // 문제만: 넣은 사진은 문제의 일부일 수 있어서 함께
+      const ims = pg.ink.filter(s => s.k === 'img');
+      if (ims.length) { await loadImgs(ims); ctx.save(); ctx.translate(-x * k, -y * k); for (const s of ims) paintItem(ctx, s, k); ctx.restore(); }
+    }
+    const url = c.toDataURL('image/jpeg', 0.88);
+    c.width = c.height = 0;
+    return url;
+  }
+  async function addToWrong(src, w, h, label) {
+    const meta = (await DB.get('meta', WRONG).catch(() => null)) || { id: WRONG, kind: 'wrong', name: '오답 노트', added: Date.now() };
+    const rec = (await DB.get('ink', WRONG).catch(() => null)) || { id: WRONG, pages: {} };
+    const order = Array.isArray(rec.order) && rec.order.length ? rec.order : [{ b: 'plain', w: A4.w, h: A4.h }];
+    const M = 36, f = Math.min(1, (A4.w - 2 * M) / w, (A4.h - 2 * M - 20) / h), iw = r2(w * f), ih = r2(h * f);
+    let li = order.length - 1;
+    const bottom = (rec.pages[li] || []).reduce((m, s) => Math.max(m, bounds(s)[3]), 0);
+    let y = bottom ? bottom + 30 : M;
+    if (y + 16 + ih > A4.h - M) { order.push({ b: 'plain', w: A4.w, h: A4.h }); li++; y = M; }
+    const t = measureText({ k: 'text', x: M, y: r2(y), t: label, c: '#5B6675', fs: 9 });
+    const im = { k: 'img', x: M, y: r2(y + 15), iw, ih, src };
+    rec.pages[li] = (rec.pages[li] || []).concat([t, im]);
+    rec.order = order; rec.updated = Date.now();
+    let n = 0, clips = 0;
+    for (const k of Object.keys(rec.pages)) { n += rec.pages[k].length; clips += rec.pages[k].filter(s => s.k === 'img').length; }
+    Object.assign(meta, { pages: order.length, inkCount: n, clips });
+    await DB.put('ink', rec); await DB.put('meta', meta);
+    return clips;
+  }
+
+  // ════════════════ 점수 매기기·채점 기록 ════════════════
+  function countStamps() {
+    let o = 0, x = 0;
+    for (const pg of S.pages) for (const s of pg.ink) { if (s.st === 'o' || s.st === 'v') o++; else if (s.st === 'x') x++; }
+    return { o, x };
+  }
+  // 학생이 보낸 파일 이름은 "이름-학습지.pdf"
+  const guessStudent = name => { const m = String(name).replace(/\.pdf$/i, '').match(/^([^-_]{1,12})[-_]/); return m ? m[1].trim() : ''; };
+  const scoreText = (r, t, hundred) => `${r}/${t}` + (hundred ? ` · ${Math.round(r / t * 100)}점` : '');
+  function openScore() {
+    if (!isGrade()) return;
+    const { o, x } = countStamps(), prev = S.meta.score || {};
+    const name0 = prev.student || guessStudent(S.meta.name);
+    showModal(`
+      <h2>점수 매기기</h2>
+      <p>도장 ○·✓ <b>${o}</b>개, ✗ <b>${x}</b>개를 셌어요. 숫자는 고칠 수 있어요.</p>
+      <div class="inrow sc-row"><label>맞은 수<input id="sc-r" type="number" min="0" step="1" inputmode="numeric" value="${o}"></label><label>문제 수<input id="sc-t" type="number" min="1" step="1" inputmode="numeric" value="${o + x || ''}"></label></div>
+      <label for="sc-name">학생 이름 (채점 기록에 남아요)</label><input id="sc-name" value="${esc(name0)}" placeholder="이름">
+      <label class="check"><input type="checkbox" id="sc-100"${prev.hundred === false ? '' : ' checked'}> 100점 만점 점수도 함께 쓰기</label>
+      <p class="score-prev" id="sc-prev"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="ok">첫 쪽에 점수 찍기</button></div>`, b => {
+      if (b.dataset.m !== 'ok') return;
+      const v = read(); if (!v) { $('#sc-t').focus({ preventScroll: true }); return; }
+      closeModal(); placeScore(v);
+    });
+    const read = () => {
+      const r = Number($('#sc-r').value), t = Number($('#sc-t').value);
+      if (!(Number.isInteger(r) && Number.isInteger(t) && t > 0 && r >= 0 && r <= t)) return null;
+      return { r, t, hundred: $('#sc-100').checked, student: $('#sc-name').value.trim() };
+    };
+    const upd = () => { const v = read(), p = $('#sc-prev'); p.textContent = v ? scoreText(v.r, v.t, v.hundred) : '맞은 수와 문제 수를 확인해 주세요.'; p.classList.toggle('err', !v); };
+    $('#modal-card').oninput = upd; $('#modal-card').onchange = upd; upd();
+  }
+  function placeScore(v) {
+    const pg = S.pages[0];
+    const old = [];
+    for (let j = pg.ink.length - 1; j >= 0; j--) if (pg.ink[j].sc) { old.push({ pg, s: pg.ink[j], at: j }); pg.ink.splice(j, 1); }
+    const t = measureText({ k: 'text', x: 0, y: 0, t: scoreText(v.r, v.t, v.hundred), c: STAMP_C, fs: 24, sc: 1 });
+    t.x = r2(Math.max(8, pg.w - t.tw - 40)); t.y = 28;
+    const p = 7, [a, b, c, d] = [t.x - p, t.y - p + 2, t.x + t.tw + p, t.y + t.th + p - 2];
+    const box = { k: 'pen', c: STAMP_C, w: 2, sh: 1, sc: 1, p: [[a, b], [c, b], [c, d], [a, d], [a, b]].map(q => [r2(q[0]), r2(q[1]), 0.5]) };
+    pg.ink.push(t, box);
+    record({ t: 'erase', items: old, adds: [{ pg, s: t }, { pg, s: box }] });
+    drawPg(pg); goPage(0);
+    S.meta.score = { r: v.r, t: v.t, hundred: v.hundred, student: v.student, at: Date.now() };
+    DB.put('meta', S.meta).catch(() => {});
+    const log = ls.get(K.grades, []).filter(g => g && g.id !== S.meta.id);
+    log.push({ id: S.meta.id, student: v.student, file: S.meta.name, r: v.r, t: v.t, at: Date.now() });
+    ls.set(K.grades, log.slice(-500));
+    toast(`첫 쪽에 ${scoreText(v.r, v.t, v.hundred)}을 찍었어요. 채점 기록에도 남았어요.`, 3200);
+  }
+  const kstStamp = t => { try { return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(t)); } catch (e) { return new Date(t).toISOString().slice(0, 16).replace('T', ' '); } };
+  function openGrades() {
+    let armed = false;
+    const html = () => {
+      const list = ls.get(K.grades, []).filter(g => g && g.t).sort((a, b) => b.at - a.at);
+      return `
+      <h2>채점 기록</h2>
+      ${list.length ? `<p>이 기기에서 점수를 매긴 ${list.length}개예요. PDF를 지워도 기록은 남아요.</p>
+      <div class="gtable"><table><thead><tr><th>날짜</th><th>학생</th><th>학습지</th><th>점수</th></tr></thead><tbody>
+      ${list.map(g => `<tr><td>${esc(kstStamp(g.at).slice(5, 10).replace('-', '.'))}</td><td>${esc(g.student || '—')}</td><td>${esc(String(g.file || '').replace(/\.pdf$/i, ''))}</td><td class="num">${g.r}/${g.t} <small>${Math.round(g.r / g.t * 100)}</small></td></tr>`).join('')}
+      </tbody></table></div>` : '<p>아직 기록이 없어요. 학생 PDF를 채점하고 [점수] 버튼으로 점수를 찍으면 여기에 모여요.</p>'}
+      <div class="row">${list.length ? `<button class="btn ghost${armed ? ' armed' : ''}" type="button" data-m="clear">${armed ? '한 번 더 누르면 모두 지워요' : '기록 지우기'}</button><button class="btn ghost" type="button" data-m="csv">표로 저장 (엑셀)</button>` : ''}<button class="btn" type="button" data-m="close">닫기</button></div>`;
+    };
+    const fn = b => {
+      if (b.dataset.m === 'clear') { if (!armed) { armed = true; showModal(html(), fn); return; } ls.set(K.grades, []); armed = false; showModal(html(), fn); toast('채점 기록을 지웠어요.'); return; }
+      if (b.dataset.m === 'csv') {
+        const list = ls.get(K.grades, []).filter(g => g && g.t).sort((a, b) => a.at - b.at);
+        const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const rows = [['날짜', '학생', '학습지', '맞은 수', '문제 수', '점수(100점)']].concat(list.map(g => [kstStamp(g.at), g.student || '', String(g.file || '').replace(/\.pdf$/i, ''), g.r, g.t, Math.round(g.r / g.t * 100)]));
+        const day = kstStamp(Date.now()).slice(0, 10);
+        download(new File(['﻿' + rows.map(r => r.map(q).join(',')).join('\r\n')], `이레노트-채점기록-${day}.csv`, { type: 'text/csv' }));
+        toast('채점 기록을 표(CSV) 파일로 저장했어요. 엑셀에서 열 수 있어요.', 3200);
+      }
+    };
+    showModal(html(), fn);
+  }
+
+  // ════════════════ 발표자 뽑기 ════════════════
+  // 명단은 이 기기에 저장. ‘뽑힌 사람 빼고’를 켜면 모두 한 번씩 나올 때까지 겹치지 않음
+  function openPicker() {
+    const R = Object.assign({ names: [], used: [], noRepeat: true }, ls.get(K.roster, {}));
+    let editing = !R.names.length, busy = false, last = '';
+    const save = () => ls.set(K.roster, R);
+    const pool = () => R.noRepeat ? R.names.filter(n => !R.used.includes(n)) : R.names;
+    const html = () => editing ? `
+      <h2>발표자 뽑기 · 명단</h2>
+      <p>한 줄에 한 명씩 적어요. (쉼표로 나눠도 돼요) 이 기기에 저장돼요.</p>
+      <textarea id="rs" rows="8" placeholder="김하늘&#10;이바다&#10;박솔">${esc(R.names.join('\n'))}</textarea>
+      <div class="row">${R.names.length ? '<button class="btn ghost" type="button" data-m="back">취소</button>' : '<button class="btn ghost" type="button" data-m="close">닫기</button>'}<button class="btn" type="button" data-m="save">명단 저장</button></div>`
+      : `
+      <h2>발표자 뽑기</h2>
+      <div class="pick-name" id="pk">${esc(last || '?')}</div>
+      <p class="pick-info" id="pk-info">${R.noRepeat ? `남은 사람 ${pool().length}명 / 모두 ${R.names.length}명` : `모두 ${R.names.length}명`}</p>
+      <label class="check"><input type="checkbox" id="pk-nr"${R.noRepeat ? ' checked' : ''}> 뽑힌 사람은 빼고 뽑기</label>
+      <div class="row"><button class="btn ghost" type="button" data-m="edit">명단 고치기</button>${R.noRepeat && R.used.length ? '<button class="btn ghost" type="button" data-m="reset">처음부터</button>' : ''}<button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="go">뽑기</button></div>`;
+    const fn = b => {
+      const m = b.dataset.m;
+      if (busy) return;
+      if (m === 'edit') { editing = true; show(); return; }
+      if (m === 'back') { editing = false; show(); return; }
+      if (m === 'save') {
+        const names = [...new Set($('#rs').value.split(/[\n,]/).map(s => s.trim()).filter(Boolean))].slice(0, 200);
+        if (!names.length) { $('#rs').focus({ preventScroll: true }); return; }
+        R.names = names; R.used = R.used.filter(n => names.includes(n)); save(); editing = false; show(); return;
+      }
+      if (m === 'reset') { R.used = []; save(); last = ''; show(); return; }
+      if (m === 'go') {
+        R.noRepeat = $('#pk-nr').checked;
+        let P = pool();
+        if (!P.length) { R.used = []; P = R.names.slice(); toast('모두 한 번씩 뽑혔어요. 처음부터 다시 뽑아요.'); }
+        const pick = P[Math.floor(Math.random() * P.length)];
+        busy = true;
+        const el = $('#pk'); el.classList.add('rolling');
+        let k = 0;
+        const step = () => {
+          if (!$('#pk')) { busy = false; return; }   // 창을 닫음
+          if (k < 14) { el.textContent = R.names[Math.floor(Math.random() * R.names.length)]; k++; setTimeout(step, 50 + k * k * 1.6); return; }
+          el.textContent = pick; el.classList.remove('rolling'); el.classList.add('picked');
+          last = pick; if (R.noRepeat) R.used.push(pick); save(); busy = false;
+          const info = $('#pk-info'); if (info) info.textContent = R.noRepeat ? `남은 사람 ${pool().length}명 / 모두 ${R.names.length}명` : `모두 ${R.names.length}명`;
+        };
+        el.classList.remove('picked'); step();
+      }
+    };
+    const show = () => {
+      showModal(html(), fn);
+      $('#modal-card').onchange = e => { if (e.target.id === 'pk-nr') { R.noRepeat = e.target.checked; save(); const info = $('#pk-info'); if (info) info.textContent = R.noRepeat ? `남은 사람 ${pool().length}명 / 모두 ${R.names.length}명` : `모두 ${R.names.length}명`; } };
+      if (editing) $('#rs').focus({ preventScroll: true });
+    };
+    show();
+  }
+
   // ════════════════ 필기 백업·불러오기 ════════════════
   // 백업 파일 = 문서 정보 + 필기 (+ 고르면 내 PDF 원본). 선생님 학습지 PDF는 다시 받을 수 있어서 넣지 않음
   const toB64 = buf => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(new Blob([buf])); });
@@ -1847,7 +2598,7 @@
   async function openBackup() {
     const metas = await DB.all('meta').catch(() => []);
     if (!metas.length) { toast('아직 백업할 필기가 없어요.'); return; }
-    const own = metas.filter(m => m.kind !== 'sheet'), pdfSize = own.reduce((a, m) => a + (m.size || 0), 0);
+    const own = metas.filter(m => m.kind === 'file' || m.kind === 'grade'), pdfSize = own.reduce((a, m) => a + (m.size || 0), 0);
     const inkN = metas.filter(m => m.inkCount).length;
     showModal(`
       <h2>필기 백업</h2>
@@ -1863,7 +2614,7 @@
         const docs = [];
         for (const m of metas) {
           const d = { meta: m, ink: await DB.get('ink', m.id).catch(() => null) };
-          if (withPdf && m.kind !== 'sheet') { const p = await DB.get('pdf', m.id).catch(() => null); if (p) d.pdf = await toB64(p.data); }
+          if (withPdf && (m.kind === 'file' || m.kind === 'grade')) { const p = await DB.get('pdf', m.id).catch(() => null); if (p) d.pdf = await toB64(p.data); }
           docs.push(d);
         }
         const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -1880,7 +2631,7 @@
     let data;
     try { data = JSON.parse(await f.text()); } catch (err) { data = null; }
     if (!data || data.app !== 'yireh-note' || !Array.isArray(data.docs)) { toast('이레 노트 백업 파일이 아니에요.', 3600); return; }
-    const docs = data.docs.filter(d => d && d.meta && typeof d.meta.id === 'string' && /^(sheet|file|grade):/.test(d.meta.id));
+    const docs = data.docs.filter(d => d && d.meta && typeof d.meta.id === 'string' && /^(sheet|file|grade|wrong):/.test(d.meta.id));
     const metas = await DB.all('meta').catch(() => []), have = new Set(metas.map(m => m.id));
     const over = docs.filter(d => have.has(d.meta.id)).length;
     showModal(`
@@ -1896,7 +2647,7 @@
         for (const d of docs) {
           const m = Object.assign({}, d.meta);
           if (d.pdf) { await DB.put('pdf', { id: m.id, data: await fromB64(d.pdf) }); delete m.noPdf; }
-          else if (m.kind !== 'sheet') { if (!(await DB.get('pdf', m.id).catch(() => null))) m.noPdf = true; else delete m.noPdf; }
+          else if (m.kind !== 'sheet' && m.kind !== 'wrong') { if (!(await DB.get('pdf', m.id).catch(() => null))) m.noPdf = true; else delete m.noPdf; }
           await DB.put('meta', m);
           if (d.ink && d.ink.pages) await DB.put('ink', Object.assign({}, d.ink, { id: m.id }));
         }
@@ -1906,6 +2657,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, get SEL() { return SEL; } };
+  window.NOTE_DEBUG = { S, DB, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
