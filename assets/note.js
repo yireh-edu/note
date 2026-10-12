@@ -23,7 +23,7 @@
     get(k, f) { try { const v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
-  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', roster: 'irae-note-roster', grades: 'irae-note-grades' };
+  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', qbar: 'irae-note-qbar', roster: 'irae-note-roster', grades: 'irae-note-grades' };
   // 문서 정보(meta), PDF 원본(pdf), 필기(ink)를 따로 둬서 목록을 볼 때 큰 PDF를 읽지 않음
   const DB = (() => {
     let opening;
@@ -109,6 +109,7 @@
     laser2: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1" /><path d="M3 15c1.5-2 3-2 4.5-.5M2.5 11c2-3 4.5-3.5 6.5-2" stroke-dasharray="2 2"/></svg>',
     laser3: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-dasharray="1.5 2.5"/></svg>',
     laser4: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1M11 9.5L2.5 18M14.5 13L6 21.5"/></svg>',
+    qedit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
     cover: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 18l7-12M13 18l6-10M3.5 14l5-8"/></svg>',
     text: '<svg viewBox="0 0 24 24"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></svg>',
     lasso: '<svg viewBox="0 0 24 24"><path stroke-dasharray="3 2.4" d="M8 16c-3.4-1-5-3.4-4-6.2C5.6 5.6 12 4 16.6 5.6S21.6 12 17.4 14.4c-2.6 1.6-6 1.8-8.6 1.4"/><path d="M8.8 15.8c-1 1.6-.8 3 .6 4.4"/></svg>',
@@ -163,6 +164,7 @@
         <div class="guides" id="guides" aria-hidden="true"></div>
         <div class="replay" id="replay" hidden><button class="tb" type="button" data-a="rp-toggle"></button><button class="tb" type="button" data-a="rp-speed"></button><span class="rp-n" id="rp-n"></span><button class="tb" type="button" data-a="rp-stop">${I.close}<span class="lbl">그만 보기</span></button></div>
         <div class="timer" id="timer" hidden><button type="button" class="tt" data-a="timer-toggle" aria-label="타이머 멈춤·계속"></button><button type="button" class="tx" data-a="timer-close" aria-label="타이머 끄기">${I.close}</button></div>
+        <div class="qbar" id="qbar" role="toolbar" aria-label="빠른 도구"></div>
         <div class="selbar" id="selbar" hidden><span id="sel-n"></span><button class="tb" type="button" data-a="sel-dup">복제</button><button class="tb" type="button" data-a="sel-del">${I.trash}<span class="lbl">지우기</span></button><button class="tb" type="button" data-a="sel-done">선택 끝</button></div>
       </div>
       <div class="thumbs" id="thumbs" hidden><div class="thumbs-bar"><b>쪽 목록</b><span class="thumbs-hint" id="thumbs-hint"></span><button class="btn ghost" type="button" data-t="edit">쪽 정리</button><button class="btn ghost" type="button" data-t="close">닫기</button></div><div class="thumbs-grid" id="thumbs-grid"></div></div>
@@ -1860,22 +1862,104 @@
 
   // ════════════════ 도구 막대 ════════════════
   const tb = (a, icon, label, pressed, showLabel = true) => `<button class="tb" type="button" data-a="${a}"${pressed == null ? '' : ` aria-pressed="${!!pressed}"`} aria-label="${label}" title="${label}">${icon}${showLabel ? `<span class="lbl">${label}</span>` : ''}</button>`;
-  function penButtons() {
-    return PENS.map((p, n) => `<button class="tb" type="button" data-pen="${n}" aria-pressed="${S.tool === 'draw' && S.pen === n}" aria-label="${p.label}" title="${p.label}">
-      <span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c}"></span></button>`).join('');
-  }
+  const penButton = n => { const p = PENS[n]; return `<button class="tb" type="button" data-pen="${n}" aria-pressed="${S.tool === 'draw' && S.pen === n}" aria-label="${p.label}" title="${p.label}">
+      <span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c}"></span></button>`; };
+  function penButtons() { return PENS.map((p, n) => penButton(n)).join(''); }
   // 즐겨찾기 펜 3칸: 누르면 그 색·굵기로, 길게 누르면 지금 펜을 저장
-  function favButtons() {
-    return FAV.map((f, n) => {
-      const p = PENS[f.pen], d = [9, 13, 18][f.size];
-      return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pen === f.pen && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${p.label} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1} · 길게 누르면 지금 펜 저장">
-        <span class="fv"><span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
-    }).join('');
+  function favButtons() { return FAV.map((f, n) => favButton(n)).join(''); }
+  function favButton(n) {
+    const f = FAV[n], p = PENS[f.pen], d = [9, 13, 18][f.size];
+    return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pen === f.pen && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${p.label} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1} · 길게 누르면 지금 펜 저장">
+      <span class="fv"><span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
   }
   function stampButtons(showLabel) {
     return Object.entries(STAMPS).map(([k, label]) => `<button class="tb stamp" type="button" data-stamp="${k}" aria-pressed="${S.tool === 'stamp' && S.stamp === k}" aria-label="${label} 도장" title="${label} 도장"><span class="glyph">${{ o: '○', v: '✓', x: '✗' }[k]}</span>${showLabel && k === 'o' ? '<span class="lbl">도장</span>' : ''}</button>`).join('');
   }
   const scoreButton = showLabel => `<button class="tb stamp" type="button" data-a="score" aria-label="점수 매기기" title="점수 매기기"><span class="glyph sc">점</span>${showLabel ? '<span class="lbl">점수</span>' : ''}</button>`;
+  // ════════════════ 빠른 도구 (화면 옆에 떠 있는 세로 막대) ════════════════
+  // 자주 쓰는 펜·레이저 등을 손 가까이: [✎]로 넣을 것을 고르고, 맨 위 손잡이를 끌어 옮기고(왼쪽·오른쪽), 톡 누르면 접기·펴기
+  const Q_ITEMS = [
+    ['fav0', '즐겨찾기 1'], ['fav1', '즐겨찾기 2'], ['fav2', '즐겨찾기 3'],
+    ...PENS.map((p, n) => ['pen' + n, p.label]),
+    ['erase', '지우개'], ['size', '굵기'],
+    ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'],
+    ['cover', '가림막'], ['curtain', '커튼'], ['text', '글자'], ['lasso', '올가미'], ['ruler', '자'], ['prot', '각도기'],
+    ['undo', '되돌리기'], ['redo', '다시 하기'], ['thumbs', '쪽 목록'], ['timer', '타이머'],
+  ];
+  const Q_NAMES = Object.fromEntries(Q_ITEMS);
+  const Q0 = { items: ['fav0', 'fav1', 'fav2', 'laser4', 'erase', 'undo'], side: 'r', y: 0.3, fold: false };   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
+  const Q = (q => {
+    const o = Object.assign({}, Q0, q && typeof q === 'object' ? q : {});
+    o.items = Array.isArray(o.items) ? o.items.filter(k => Q_NAMES[k]) : Q0.items.slice();
+    o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.fold = !!o.fold;
+    return o;
+  })(ls.get(K.qbar, null));
+  const saveQ = () => ls.set(K.qbar, Q);
+  function qButton(k) {
+    if (/^fav\d$/.test(k)) return favButton(Number(k[3]));
+    if (/^pen\d$/.test(k)) return penButton(Number(k[3]));
+    const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', cover: 'cover', text: 'text', lasso: 'lasso' };
+    if (k === 'erase') return tb('erase', I.erase, S.eraseMode === 'part' ? '부분 지우개' : '지우개', S.tool === 'erase', false);
+    if (k === 'size') return `<button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${[2, 4, 7][S.size]}px"></span></button>`;
+    if (lz[k]) return tb(k, I[k], Q_NAMES[k], S.tool === k, false);
+    if (k === 'ruler' || k === 'prot') return tb(k, I[k], Q_NAMES[k], !!G[k], false);
+    const icon = { curtain: I.curtain, undo: I.undo, redo: I.redo, thumbs: I.grid, timer: I.timer }[k];
+    return tb(k, icon, Q_NAMES[k], null, false);
+  }
+  function renderQbar() {
+    const el = $('#qbar');
+    el.classList.toggle('l', Q.side === 'l'); el.classList.toggle('fold', Q.fold);
+    el.innerHTML = `<button class="qgrip" type="button" data-q="grip" aria-label="빠른 도구 옮기기 (톡 누르면 ${Q.fold ? '펴기' : '접기'})" title="끌어서 옮기기 · 톡 누르면 ${Q.fold ? '펴기' : '접기'}"><span></span><span></span><span></span></button>`
+      + (Q.fold ? '' : Q.items.map(qButton).join('') + `<button class="tb qedit" type="button" data-a="q-edit" aria-label="빠른 도구 고르기" title="빠른 도구 고르기">${I.qedit}</button>`);
+    placeQbar();
+  }
+  function placeQbar() {
+    const el = $('#qbar'), wrap = el.parentElement;
+    const H = wrap.clientHeight, h = el.offsetHeight;
+    el.style.top = clamp(Q.y * H - 15, 8, Math.max(8, H - h - 8)) + 'px';
+  }
+  window.addEventListener('resize', () => { if (!viewer.hidden) placeQbar(); });
+  {
+    let qd = null;
+    const qbarEl = $('#qbar');
+    qbarEl.addEventListener('pointerdown', e => {
+      if (!e.target.closest('[data-q="grip"]')) return;
+      e.preventDefault();
+      qd = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false };
+      try { qbarEl.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    qbarEl.addEventListener('pointermove', e => {
+      if (!qd || e.pointerId !== qd.id) return;
+      if (!qd.moved && Math.hypot(e.clientX - qd.x0, e.clientY - qd.y0) < 8) return;
+      qd.moved = true;
+      const r = qbarEl.parentElement.getBoundingClientRect();
+      Q.y = clamp((e.clientY - r.top) / r.height, 0, 1);
+      Q.side = e.clientX < r.left + r.width / 2 ? 'l' : 'r';
+      qbarEl.classList.toggle('l', Q.side === 'l'); placeQbar();
+    });
+    const up = e => {
+      if (!qd || e.pointerId !== qd.id) return;
+      const tap = !qd.moved; qd = null;
+      if (tap && e.type === 'pointerup') { Q.fold = !Q.fold; renderQbar(); }
+      saveQ();
+    };
+    qbarEl.addEventListener('pointerup', up); qbarEl.addEventListener('pointercancel', up);
+  }
+  function openQbarEdit() {
+    const on = new Set(Q.items);
+    const row = ([k, label]) => `<label class="check qpick"><input type="checkbox" data-k="${k}"${on.has(k) ? ' checked' : ''}> ${esc(label)}</label>`;
+    showModal(`
+      <h2>빠른 도구 고르기</h2>
+      <p>화면 옆 막대에 둘 것을 고르세요. 막대 맨 위 손잡이를 끌면 옮기고(왼쪽·오른쪽), 톡 누르면 접혀요.</p>
+      <div class="qpicks">${Q_ITEMS.map(row).join('')}</div>
+      <div class="row"><button class="btn ghost" type="button" data-m="reset">처음대로</button><button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">저장</button></div>`, b => {
+      if (b.dataset.m === 'reset') { $('#modal-card').querySelectorAll('[data-k]').forEach(x => { x.checked = Q0.items.includes(x.dataset.k); }); return; }
+      if (b.dataset.m !== 'ok') return;
+      Q.items = [...$('#modal-card').querySelectorAll('[data-k]')].filter(x => x.checked).map(x => x.dataset.k);
+      Q.fold = false; saveQ(); closeModal(); renderQbar();
+      if (!Q.items.length) toast('빠른 도구가 비었어요. [✎]를 눌러 다시 고를 수 있어요.');
+    });
+  }
   function renderTools() {
     const kind = S.meta && S.meta.kind, sheet = kind === 'sheet', grade = kind === 'grade';
     const fd = fingerDraws();
@@ -1940,6 +2024,7 @@
       ${tb('more', I.more, '더보기', null, false)}
       <span class="sep"></span>
       <button class="tb" type="button" data-a="exit-present">${I.close}<span class="lbl">끝내기</span></button>`;
+    renderQbar();
     updateUndo(); updatePageNo();
   }
   function updateUndo() {
@@ -2004,6 +2089,7 @@
       case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'cover': case 'text': case 'lasso': setTool(a); break;
       case 'clip': setTool('draw'); break;
       case 'curtain': toggleCurtain(); break;
+      case 'q-edit': openQbarEdit(); break;
       case 'ruler': case 'prot': toggleGuide(a); break;
       case 'photo': photoPage = S.pages[S.cur]; $('#img-in').click(); break;
       case 'score': openScore(); break;
