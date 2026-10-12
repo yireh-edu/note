@@ -110,7 +110,7 @@ button{font:inherit; color:inherit}
 .viewer.present .bar{display:none}
 .viewer.present .pages{padding:calc(12px + env(safe-area-inset-top)) 12px 12px}
 .viewer.present .page .pnum{display:none}
-.pbar{position:absolute; left:50%; bottom:calc(14px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:none; align-items:center; gap:4px; background:var(--bar); border:1px solid var(--line); border-radius:16px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.22); z-index:6; max-width:calc(100% - 16px); overflow-x:auto}
+.pbar{position:absolute; left:50%; bottom:calc(14px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:none; align-items:center; gap:2px; background:var(--bar); border:1px solid var(--line); border-radius:16px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.22); z-index:6; max-width:calc(100% - 16px); overflow-x:auto}
 .viewer.present .pbar{display:flex}
 .pbar .pageno{padding:0 6px}
 
