@@ -232,6 +232,7 @@ button{font:inherit; color:inherit}
 @keyframes eflash{0%{opacity:0; transform:scale(.7)}25%{opacity:1; transform:scale(1)}100%{opacity:0}}
 /* 빠른 도구: 화면 옆에 떠 있는 세로 막대 */
 .qbar{position:absolute; right:max(10px, env(safe-area-inset-right)); top:40%; z-index:6; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px; background:var(--bar); border:1px solid var(--line); border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,.18); max-height:calc(100% - 16px); overflow-y:auto; touch-action:none}
+.qbar[hidden]{display:none}
 .qbar.l{right:auto; left:max(10px, env(safe-area-inset-left))}
 .qbar .tb{width:44px; height:42px; padding:0; justify-content:center}
 .qbar .qgrip{width:44px; height:22px; border:0; background:none; display:flex; align-items:center; justify-content:center; gap:3px; cursor:grab; touch-action:none; color:var(--muted)}
