@@ -48,14 +48,19 @@
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
   // ── 도구 ──
-  const PENS = [
-    { k: 'pen', c: '#1B2430', label: '검은 펜' },
-    { k: 'pen', c: '#D2372A', label: '빨간 펜' },
-    { k: 'pen', c: '#2257C9', label: '파란 펜' },
-    { k: 'hl', c: '#FFD400', label: '노란 형광펜' },
-    { k: 'hl', c: '#7CE07C', label: '연두 형광펜' },
-  ];
-  const SIZES = { pen: [1.1, 2, 3.4], hl: [9, 14, 20] };   // PDF 단위(pt)
+  // 펜 종류: 연필(결이 있는 흐린 선, 누르는 힘 → 진하기) · 볼펜(누르는 힘 → 굵기) · 펜촉(긋는 방향 → 굵기, 만년필처럼) · 형광펜
+  // 선 항목은 k:'pen'|'hl' 그대로 두고 연필·펜촉만 t:'pencil'|'nib'를 붙임 (예전 필기·지우개·올가미가 그대로 동작)
+  const PT_KEYS = ['pencil', 'pen', 'nib', 'hl'];
+  const PTYPES = { pencil: '연필', pen: '볼펜', nib: '펜촉', hl: '형광펜' };
+  const SIZES = { pencil: [0.9, 1.5, 2.4], pen: [1.1, 2, 3.4], nib: [1.8, 3, 4.6], hl: [9, 14, 20] };   // PDF 단위(pt)
+  const PALETTE = ['#1B2430', '#5B6470', '#9AA3AE', '#FFFFFF', '#D2372A', '#8E2A2A', '#E8730C', '#C9A100', '#1E8A3E', '#7CB518', '#0F8B8D', '#3FA9F5', '#2257C9', '#1F3F8F', '#7A3FC4', '#D63384', '#8E5A2A'];
+  const HL_PALETTE = ['#FFD400', '#FFB000', '#FF8FC8', '#FF6B6B', '#7CE07C', '#5ED6C8', '#7FB8FF', '#C79BFF', '#CFCFCF'];
+  const SW0 = { pencil: ['#3A3F47', '#D2372A', '#2257C9'], pen: ['#1B2430', '#D2372A', '#2257C9'], nib: ['#1B2430', '#1F3F8F', '#8E2A2A'], hl: ['#FFD400', '#7CE07C', '#FF8FC8'] };
+  const OLD_PENS = [['pen', '#1B2430'], ['pen', '#D2372A'], ['pen', '#2257C9'], ['hl', '#FFD400'], ['hl', '#7CE07C']];   // 예전 설정(펜 번호) 옮기기
+  const isCol = c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c);
+  const COLOR_NAMES = { '#1B2430': '검정', '#3A3F47': '흑연', '#5B6470': '진회색', '#9AA3AE': '회색', '#FFFFFF': '흰색', '#D2372A': '빨강', '#8E2A2A': '자주', '#E8730C': '주황', '#C9A100': '겨자', '#1E8A3E': '초록', '#7CB518': '연두', '#0F8B8D': '청록', '#3FA9F5': '하늘', '#2257C9': '파랑', '#1F3F8F': '남색', '#7A3FC4': '보라', '#D63384': '분홍', '#8E5A2A': '갈색', '#FFD400': '노랑', '#FFB000': '귤색', '#FF8FC8': '분홍', '#FF6B6B': '다홍', '#7CE07C': '연두', '#5ED6C8': '민트', '#7FB8FF': '하늘', '#C79BFF': '연보라', '#CFCFCF': '회색' };
+  const colName = c => COLOR_NAMES[String(c).toUpperCase()] || '고른 색';
+  const penLabel = (t, c) => `${PTYPES[t]} ${colName(c)}`;
   const SIZE_NAMES = ['가늘게', '보통', '굵게'];
   const TEXT_SIZES = [12, 18, 28];
   const STAMP_R = [9, 14, 20], STAMP_W = [1.6, 2.4, 3.2], STAMP_C = '#D2372A';
@@ -68,11 +73,27 @@
   const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1); return w + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? a : b); };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const set0 = ls.get(K.set, {});
-  const FAV0 = [{ pen: 0, size: 1 }, { pen: 1, size: 0 }, { pen: 3, size: 1 }];
-  const favOk = f => f && PENS[f.pen] && [0, 1, 2].includes(f.size);
-  const FAV = (a => Array.isArray(a) && a.length === 3 && a.every(favOk) ? a : FAV0.map(f => Object.assign({}, f)))(ls.get(K.fav, null));
+  const FAV0 = [{ t: 'pen', c: '#1B2430', size: 1 }, { t: 'pen', c: '#D2372A', size: 0 }, { t: 'hl', c: '#FFD400', size: 1 }];
+  const favFix = f => {
+    if (!f || ![0, 1, 2].includes(f.size)) return null;
+    if (Number.isInteger(f.pen) && OLD_PENS[f.pen]) return { t: OLD_PENS[f.pen][0], c: OLD_PENS[f.pen][1], size: f.size };
+    return PTYPES[f.t] && isCol(f.c) ? { t: f.t, c: f.c, size: f.size } : null;
+  };
+  const FAV = (a => { const v = Array.isArray(a) && a.length === 3 ? a.map(favFix) : []; return v.length === 3 && v.every(Boolean) ? v : FAV0.map(f => Object.assign({}, f)); })(ls.get(K.fav, null));
+  // 펜 설정: 종류(pt), 종류마다 지금 색(col)과 색 칸 3개(sw)
+  const pen0 = (() => {
+    const old = Number.isInteger(set0.pen) && OLD_PENS[set0.pen];
+    const pt = PTYPES[set0.pt] ? set0.pt : old ? old[0] : 'pen';
+    const sw = {}, col = {};
+    for (const t of PT_KEYS) {
+      const a = set0.sw && Array.isArray(set0.sw[t]) && set0.sw[t].length === 3 && set0.sw[t].every(isCol) ? set0.sw[t].slice() : SW0[t].slice();
+      sw[t] = a; col[t] = set0.col && isCol(set0.col[t]) ? set0.col[t] : a[0];
+    }
+    if (old && !set0.col) col[old[0]] = old[1];
+    return { pt, sw, col };
+  })();
   const S = {
-    tool: TOOLS.includes(set0.tool) ? set0.tool : 'draw', pen: Number.isInteger(set0.pen) && PENS[set0.pen] ? set0.pen : 0, size: [0, 1, 2].includes(set0.size) ? set0.size : 1,
+    tool: TOOLS.includes(set0.tool) ? set0.tool : 'draw', pt: pen0.pt, col: pen0.col, sw: pen0.sw, size: [0, 1, 2].includes(set0.size) ? set0.size : 1,
     finger: set0.finger || 'auto',   // auto(펜을 쓰면 이동) | draw | pan
     eraseMode: set0.eraseMode === 'part' ? 'part' : 'stroke',   // 선 통째로 | 문지른 부분만
     snap: set0.snap !== false,       // 긋고 멈추면 반듯한 도형으로
@@ -81,7 +102,7 @@
     meta: null, pdf: null, pages: [], hist: [], redo: [],
     zoom: 1, scale: 1, cur: 0, present: false, view: 'home',
   };
-  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pen: S.pen, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap });
+  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap });
   const fingerDraws = () => S.finger === 'draw' || (S.finger === 'auto' && !S.penSeen);
   const isGrade = () => !!(S.meta && S.meta.kind === 'grade');
 
@@ -111,6 +132,11 @@
     laser4: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1M11 9.5L2.5 18M14.5 13L6 21.5"/></svg>',
     qedit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
     qbar: '<svg viewBox="0 0 24 24"><rect x="15" y="3" width="6" height="18" rx="3"/><path d="M3 7h8M3 12h8M3 17h8"/></svg>',
+    pencil: '<svg viewBox="0 0 24 24"><path d="M5 19l1.2-4.4L16.4 4.4a1.8 1.8 0 012.6 0l.6.6a1.8 1.8 0 010 2.6L9.4 17.8z"/><path d="M14.6 6.2l3.2 3.2M5 19l4.4-1.2"/></svg>',
+    pen: '<svg viewBox="0 0 24 24"><path d="M18.5 3.5l2 2L9 17l-3.2 1.2L7 15z"/><path d="M16.5 5.5l2 2M4 20l1.8-1.8"/></svg>',
+    nib: '<svg viewBox="0 0 24 24"><path d="M12 21l-5.5-9L12 3l5.5 9z"/><path d="M12 21v-7.5"/><circle cx="12" cy="11.5" r="1.4"/></svg>',
+    hl: '<svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-7.5 7.5h-3l-2-2v-3z"/><path d="M7 15l-3 3v2h4l2-2M4 21h16"/></svg>',
+    palette: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.2 0 1.8-.8 1.8-1.7 0-1.1-.9-1.4-.9-2.4 0-.9.8-1.6 1.7-1.6H17a4 4 0 004-4c0-4.6-4-8.3-9-8.3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>',
     cover: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 18l7-12M13 18l6-10M3.5 14l5-8"/></svg>',
     text: '<svg viewBox="0 0 24 24"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></svg>',
     lasso: '<svg viewBox="0 0 24 24"><path stroke-dasharray="3 2.4" d="M8 16c-3.4-1-5-3.4-4-6.2C5.6 5.6 12 4 16.6 5.6S21.6 12 17.4 14.4c-2.6 1.6-6 1.8-8.6 1.4"/><path d="M8.8 15.8c-1 1.6-.8 3 .6 4.4"/></svg>',
@@ -354,7 +380,7 @@
     S.pages.forEach(pg => { if (pg.src === 0) pg.vp = v1; });
     meta.pages = S.pages.length; meta.opened = Date.now(); DB.put('meta', meta).catch(() => {});
     // 채점할 PDF는 빨간 펜으로 시작
-    if (meta.kind === 'grade') { S.pen = 1; S.tool = 'draw'; }
+    if (meta.kind === 'grade') { S.pt = 'pen'; S.col.pen = '#D2372A'; S.tool = 'draw'; }
     else if (S.tool === 'stamp') S.tool = 'draw';
     // 열 때는 늘 화면 폭에 맞춤 (휴대폰·태블릿을 오가도 어긋나지 않게). 마지막에 보던 쪽만 기억
     S.zoom = 1; S.cur = Math.min(meta.lastPage || 0, S.pages.length - 1);
@@ -627,21 +653,57 @@
     else { ctx.save(); ctx.fillStyle = '#EEF2F7'; ctx.fillRect(s.x * k, s.y * k, s.iw * k, s.ih * k); ctx.restore(); }
   }
   const widthAt = (s, pr) => s.w * (0.45 + 1.1 * Math.max(0, Math.min(1, pr)));
+  // 연필·펜촉·압력 선을 마디로 나눠 굵기(w)·진하기(al)를 정함 (화면과 PDF가 같은 값을 씀)
+  const PENCIL_AL = 0.85;
+  function strokeSegs(s) {
+    const out = [], nib = s.t === 'nib', pencil = s.t === 'pencil';
+    let wPrev = null;
+    segments(s.p, (a, c, b, pr) => {
+      let w, al = 1;
+      if (nib) {
+        // 펜촉을 45°로 잡은 만년필: ↘ 방향은 굵게, ↗ 방향은 가늘게. 마디마다 앞 굵기와 섞어 매끄럽게
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const f = Math.hypot(dx, dy) < 1e-3 && wPrev != null ? null : 0.18 + 0.82 * Math.abs(Math.sin(Math.atan2(dy, dx) + Math.PI / 4));
+        w = f == null ? wPrev : s.w * f * (s.pr ? 0.55 + 0.7 * clamp(pr, 0, 1) : 1);
+        if (wPrev != null) w = wPrev * 0.45 + w * 0.55;
+        wPrev = w;
+      } else if (pencil) { w = s.w * (0.75 + 0.5 * clamp(pr, 0, 1)); al = 0.3 + 0.62 * clamp(pr, 0, 1); }
+      else w = widthAt(s, pr);
+      out.push({ a, c, b, w, al });
+    });
+    return out;
+  }
+  // 연필 결: 색마다 작은 얼룩무늬 한 장을 만들어 두고 선을 그 무늬로 칠함
+  const grainCache = new Map();
+  function grain(ctx, c) {
+    let g = grainCache.get(c);
+    if (!g) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      const x = cv.getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 64, 64);
+      const im = x.getImageData(0, 0, 64, 64), d = im.data;
+      let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let i = 3; i < d.length; i += 4) d[i] = 110 + Math.floor(rnd() * 145);
+      x.putImageData(im, 0, 0);
+      g = ctx.createPattern(cv, 'repeat'); grainCache.set(c, g);
+    }
+    return g;
+  }
   // 선 그리기: 점 사이를 부드러운 곡선으로. 펜 압력이 있으면 마디마다 굵기를 바꿈. 반듯한 도형(sh)은 꺾인 그대로
   function paintStroke(ctx, s, k) {
     const P = s.p, n = P.length;
     if (!n) return;
     ctx.save();
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = s.c;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = s.t === 'pencil' ? grain(ctx, s.c) : s.c;
     if (s.k === 'hl') { ctx.globalAlpha = HL_ALPHA; ctx.globalCompositeOperation = 'multiply'; }
+    if (s.t === 'pencil') ctx.globalAlpha = PENCIL_AL;
     if (s.sh) {
       ctx.lineWidth = s.w * k;
       ctx.beginPath(); ctx.moveTo(P[0][0] * k, P[0][1] * k);
       for (let i = 1; i < n; i++) ctx.lineTo(P[i][0] * k, P[i][1] * k);
       if (n === 1) ctx.lineTo(P[0][0] * k + 0.01, P[0][1] * k);
       ctx.stroke();
-    } else if (s.k === 'hl' || !s.pr || n < 3) {
-      ctx.lineWidth = (s.k === 'hl' || !s.pr ? s.w : widthAt(s, P[0][2])) * k;
+    } else if (s.k === 'hl' || (!s.pr && s.t !== 'nib') || n < 3) {
+      ctx.lineWidth = (s.k === 'hl' || !s.pr ? s.w * (s.t === 'nib' ? 0.6 : 1) : widthAt(s, P[0][2])) * k;
       ctx.beginPath(); ctx.moveTo(P[0][0] * k, P[0][1] * k);
       if (n === 1) ctx.lineTo(P[0][0] * k + 0.01, P[0][1] * k);
       else if (n === 2) ctx.lineTo(P[1][0] * k, P[1][1] * k);
@@ -651,10 +713,13 @@
       }
       ctx.stroke();
     } else {
-      segments(P, (a, c, b, pr) => {
-        ctx.lineWidth = widthAt(s, pr) * k;
-        ctx.beginPath(); ctx.moveTo(a[0] * k, a[1] * k); ctx.quadraticCurveTo(c[0] * k, c[1] * k, b[0] * k, b[1] * k); ctx.stroke();
-      });
+      // 연필은 마디마다 진하기가 달라서 겹친 끝이 진해지지 않게 납작한 끝으로
+      if (s.t === 'pencil') ctx.lineCap = 'butt';
+      for (const g of strokeSegs(s)) {
+        ctx.lineWidth = g.w * k;
+        if (s.t === 'pencil') ctx.globalAlpha = g.al;
+        ctx.beginPath(); ctx.moveTo(g.a[0] * k, g.a[1] * k); ctx.quadraticCurveTo(g.c[0] * k, g.c[1] * k, g.b[0] * k, g.b[1] * k); ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -1309,10 +1374,10 @@
       act = Object.assign(base, { k: 'lasso', pg, r: hit.r, pts: [pt], kk: liveOn(pg) });
       return;
     }
-    const pen = PENS[S.pen];
     const pr = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
-    const s = { k: pen.k, c: pen.c, w: SIZES[pen.k][S.size], p: [[...pt, pr]] };
-    if (e.pointerType === 'pen' && pen.k === 'pen') s.pr = 1;
+    const s = { k: S.pt === 'hl' ? 'hl' : 'pen', c: S.col[S.pt], w: SIZES[S.pt][S.size], p: [[...pt, pr]] };
+    if (S.pt === 'pencil' || S.pt === 'nib') s.t = S.pt;
+    if (e.pointerType === 'pen' && S.pt !== 'hl') s.pr = 1;
     act = Object.assign(base, { k: 'draw', pg, s, kk: liveOn(pg), r: hit.r, smooth: pr, hx: e.clientX, hy: e.clientY });
     if (gh && (gh.part === 'edge' || gh.part === 'arc')) {
       // 자·각도기를 따라 긋기: 반듯한 선(도형과 같은 방식으로 저장)
@@ -1864,15 +1929,20 @@
 
   // ════════════════ 도구 막대 ════════════════
   const tb = (a, icon, label, pressed, showLabel = true) => `<button class="tb" type="button" data-a="${a}"${pressed == null ? '' : ` aria-pressed="${!!pressed}"`} aria-label="${label}" title="${label}">${icon}${showLabel ? `<span class="lbl">${label}</span>` : ''}</button>`;
-  const penButton = n => { const p = PENS[n]; return `<button class="tb" type="button" data-pen="${n}" aria-pressed="${S.tool === 'draw' && S.pen === n}" aria-label="${p.label}" title="${p.label}">
-      <span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c}"></span></button>`; };
-  function penButtons() { return PENS.map((p, n) => penButton(n)).join(''); }
+  // 펜 종류 버튼(연필·볼펜·펜촉·형광펜): 고른 종류를 한 번 더 누르면 [펜·색 고르기]
+  const ptButton = (t, showLabel) => `<button class="tb pt" type="button" data-pt="${t}" aria-pressed="${S.tool === 'draw' && S.pt === t}" aria-label="${PTYPES[t]}" title="${PTYPES[t]}${S.tool === 'draw' && S.pt === t ? ' · 한 번 더 누르면 색·굵기' : ''}">${I[t]}<span class="ptc" style="background:${S.col[t]}"></span>${showLabel ? `<span class="lbl">${PTYPES[t]}</span>` : ''}</button>`;
+  function ptButtons(showLabel) { return PT_KEYS.map(t => ptButton(t, showLabel)).join(''); }
+  // 지금 펜 종류의 색 칸 3개: 누르면 그 색, 고른 칸을 한 번 더 누르면 그 칸의 색 바꾸기
+  const swButton = i => { const c = S.sw[S.pt][i], on = S.tool === 'draw' && S.col[S.pt] === c; return `<button class="tb sw" type="button" data-sw="${i}" aria-pressed="${on}" aria-label="${penLabel(S.pt, c)}" title="${penLabel(S.pt, c)}${on ? ' · 한 번 더 누르면 색 바꾸기' : ''}">
+      <span class="dot${S.pt === 'hl' ? ' hl' : ''}" style="background:${c}"></span></button>`; };
+  function swButtons() { return [0, 1, 2].map(swButton).join(''); }
+  function penButtons() { return ptButtons(false) + swButtons(); }
   // 즐겨찾기 펜 3칸: 누르면 그 색·굵기로, 길게 누르면 지금 펜을 저장
   function favButtons() { return FAV.map((f, n) => favButton(n)).join(''); }
   function favButton(n) {
-    const f = FAV[n], p = PENS[f.pen], d = [9, 13, 18][f.size];
-    return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pen === f.pen && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${p.label} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1} · 길게 누르면 지금 펜 저장">
-      <span class="fv"><span class="dot${p.k === 'hl' ? ' hl' : ''}" style="background:${p.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
+    const f = FAV[n], d = [9, 13, 18][f.size], lb = penLabel(f.t, f.c);
+    return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pt === f.t && S.col[f.t] === f.c && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${lb} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1}: ${lb} · 길게 누르면 지금 펜 저장">
+      <span class="fv"><span class="dot${f.t === 'hl' ? ' hl' : ''}${f.t === 'pencil' ? ' pc' : ''}" style="background:${f.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
   }
   function stampButtons(showLabel) {
     return Object.entries(STAMPS).map(([k, label]) => `<button class="tb stamp" type="button" data-stamp="${k}" aria-pressed="${S.tool === 'stamp' && S.stamp === k}" aria-label="${label} 도장" title="${label} 도장"><span class="glyph">${{ o: '○', v: '✓', x: '✗' }[k]}</span>${showLabel && k === 'o' ? '<span class="lbl">도장</span>' : ''}</button>`).join('');
@@ -1882,7 +1952,7 @@
   // 자주 쓰는 펜·레이저 등을 손 가까이: [✎]로 넣을 것을 고르고, 맨 위 손잡이를 끌어 옮기고(왼쪽·오른쪽), 톡 누르면 접기·펴기
   const Q_ITEMS = [
     ['fav0', '즐겨찾기 1'], ['fav1', '즐겨찾기 2'], ['fav2', '즐겨찾기 3'],
-    ...PENS.map((p, n) => ['pen' + n, p.label]),
+    ...PT_KEYS.map(t => ['t' + t, PTYPES[t]]), ['sw0', '색 칸 1'], ['sw1', '색 칸 2'], ['sw2', '색 칸 3'], ['penpanel', '펜·색 고르기'],
     ['erase', '지우개'], ['size', '굵기'],
     ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'],
     ['cover', '가림막'], ['curtain', '커튼'], ['text', '글자'], ['lasso', '올가미'], ['ruler', '자'], ['prot', '각도기'],
@@ -1892,14 +1962,17 @@
   const Q0 = { items: ['fav0', 'fav1', 'fav2', 'laser4', 'erase', 'undo'], side: 'r', y: 0.3, fold: false, show: false };   // 처음엔 숨김: [빠른 도구] 버튼으로 켬   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
   const Q = (q => {
     const o = Object.assign({}, Q0, q && typeof q === 'object' ? q : {});
-    o.items = Array.isArray(o.items) ? o.items.filter(k => Q_NAMES[k]) : Q0.items.slice();
+    // 예전 펜 칸(pen0~4) → 볼펜·형광펜
+    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : k))].filter(k => Q_NAMES[k]) : Q0.items.slice();
     o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.fold = !!o.fold; o.show = !!o.show;
     return o;
   })(ls.get(K.qbar, null));
   const saveQ = () => ls.set(K.qbar, Q);
   function qButton(k) {
     if (/^fav\d$/.test(k)) return favButton(Number(k[3]));
-    if (/^pen\d$/.test(k)) return penButton(Number(k[3]));
+    if (/^t(pencil|pen|nib|hl)$/.test(k)) return ptButton(k.slice(1), false);
+    if (/^sw\d$/.test(k)) return swButton(Number(k[2]));
+    if (k === 'penpanel') return tb('penpanel', I.palette, '펜·색 고르기', null, false);
     const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', cover: 'cover', text: 'text', lasso: 'lasso' };
     if (k === 'erase') return tb('erase', I.erase, S.eraseMode === 'part' ? '부분 지우개' : '지우개', S.tool === 'erase', false);
     if (k === 'size') return `<button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${[2, 4, 7][S.size]}px"></span></button>`;
@@ -1954,6 +2027,51 @@
     Q.show = !Q.show; if (Q.show) Q.fold = false; saveQ(); renderTools();
     toast(Q.show ? '빠른 도구를 켰어요. 맨 위 손잡이(•••)를 끌어 원하는 곳에 두고, [✎]로 넣을 것을 골라요.' : '빠른 도구를 껐어요. 도구 줄의 [빠른 도구]나 [더보기]에서 다시 켤 수 있어요.', 3600);
   }
+  // ════════════════ 펜·색 고르기 ════════════════
+  // 종류 · 색(팔레트·직접 고르기) · 굵기를 한곳에서. 고른 색은 지금 고른 색 칸(없으면 3번 칸)에 들어감
+  function openPenPanel(ei) {
+    let t = S.pt;
+    const slot = () => { const i = S.sw[t].indexOf(S.col[t]); return Number.isInteger(ei) && t === S.pt ? ei : i >= 0 ? i : 2; };
+    let at = slot();
+    const html = () => {
+      const pal = t === 'hl' ? HL_PALETTE : PALETTE, cur = S.col[t];
+      return `
+      <h2>펜·색 고르기</h2>
+      <div class="pp-types">${PT_KEYS.map(k => `<button class="tb pt" type="button" data-m="pt" data-v="${k}" aria-pressed="${k === t}">${I[k]}<span class="ptc" style="background:${S.col[k]}"></span><span class="lbl">${PTYPES[k]}</span></button>`).join('')}</div>
+      <canvas class="pp-prev" id="pp-prev" aria-hidden="true"></canvas>
+      <p class="mh">색 칸 <small>바꿀 칸을 고르고 아래에서 색을 누르세요</small></p>
+      <div class="pp-slots">${[0, 1, 2].map(i => `<button class="pp-slot" type="button" data-m="slot" data-v="${i}" aria-pressed="${i === at}" aria-label="${i + 1}번 칸: ${colName(S.sw[t][i])}"><span class="dot${t === 'hl' ? ' hl' : ''}" style="background:${S.sw[t][i]}"></span><small>${i + 1}</small></button>`).join('')}</div>
+      <p class="mh">색</p>
+      <div class="pp-cols">${pal.map(c => `<button class="pp-col${c === cur ? ' on' : ''}" type="button" data-m="col" data-v="${c}" aria-label="${colName(c)}" title="${colName(c)}" style="background:${c}"></button>`).join('')}
+        <label class="pp-custom" title="직접 고르기"><input type="color" id="pp-color" value="${cur}" aria-label="색 직접 고르기"><span>직접</span></label></div>
+      <p class="mh">굵기</p>
+      <div class="pp-sizes">${[0, 1, 2].map(i => `<button class="tb" type="button" data-m="size" data-v="${i}" aria-pressed="${i === S.size}"><span class="size-line" style="height:${Math.max(2, Math.min(12, SIZES[t][i] * (t === 'hl' ? 0.5 : 1.6)))}px"></span><span class="lbl">${SIZE_NAMES[i]}</span></button>`).join('')}</div>
+      <div class="row"><button class="btn" type="button" data-m="close">다 골랐어요</button></div>`;
+    };
+    const setCol = c => { S.sw[t][at] = c; S.col[t] = c; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); };
+    const show = () => { showModal(html(), fn); $('#modal-card').oninput = e => { if (e.target.id === 'pp-color' && isCol(e.target.value)) { setCol(e.target.value.toUpperCase()); prev(); } }; $('#modal-card').onchange = e => { if (e.target.id === 'pp-color') show(); }; prev(); };
+    const fn = b => {
+      const m = b.dataset.m, v = b.dataset.v;
+      if (m === 'pt') { t = v; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); ei = null; at = slot(); show(); return; }
+      if (m === 'slot') { at = Number(v); S.col[t] = S.sw[t][at]; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); show(); return; }
+      if (m === 'col') { setCol(v); show(); return; }
+      if (m === 'size') { S.size = Number(v); saveSettings(); renderTools(); show(); return; }
+    };
+    // 미리 보기: 지금 고른 펜으로 물결 한 줄
+    const prev = () => {
+      const cv = $('#pp-prev'); if (!cv) return;
+      const d = DPR(), W = cv.clientWidth || 300, H = 64;
+      cv.width = W * d; cv.height = H * d;
+      const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+      const pts = [];
+      for (let i = 0; i <= 40; i++) { const x = 14 + (W - 28) * i / 40; pts.push([x, H / 2 + Math.sin(i / 40 * Math.PI * 2.2) * 16, 0.25 + 0.7 * Math.sin(i / 40 * Math.PI)]); }
+      const st = { k: t === 'hl' ? 'hl' : 'pen', c: S.col[t], w: SIZES[t][S.size] * 1.5, p: pts };
+      if (t !== 'hl') st.pr = 1;
+      if (t === 'pencil' || t === 'nib') st.t = t;
+      paintStroke(ctx, st, d);
+    };
+    show();
+  }
   function openQbarEdit() {
     const on = new Set(Q.items);
     const row = ([k, label]) => `<label class="check qpick"><input type="checkbox" data-k="${k}"${on.has(k) ? ' checked' : ''}> ${esc(label)}</label>`;
@@ -1977,7 +2095,9 @@
     $('#tools').innerHTML = `
       ${favButtons()}
       <span class="sep"></span>
-      ${penButtons()}
+      ${ptButtons(false)}
+      <span class="sep"></span>
+      ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase')}
       <button class="tb" type="button" data-a="size" title="굵기">${`<span class="size-line" style="height:${sizeH}px"></span>`}<span class="lbl">${SIZE_NAMES[S.size]}</span></button>
       <span class="sep"></span>
@@ -2020,7 +2140,8 @@
       <span class="sep"></span>
       ${favButtons()}
       <span class="sep"></span>
-      ${penButtons()}
+      <button class="tb pt" type="button" data-a="penpanel" aria-pressed="${S.tool === 'draw'}" aria-label="펜·색 고르기 (지금: ${PTYPES[S.pt]})" title="펜·색 고르기 (지금: ${PTYPES[S.pt]})">${I[S.pt]}<span class="ptc" style="background:${S.col[S.pt]}"></span></button>
+      ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
       ${tb('laser-x', I[laserKind()], LASER_NAMES[laserKind()] + ' (한 번 더 누르면 다른 레이저)', LASERS.includes(S.tool), false)}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
@@ -2070,16 +2191,17 @@
   for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, () => clearTimeout(favHold));
   function saveFav(n) {
     if (S.tool !== 'draw') { toast('먼저 펜 색과 굵기를 고른 뒤, 즐겨찾기 칸을 길게 누르세요.'); return; }
-    FAV[n] = { pen: S.pen, size: S.size }; ls.set(K.fav, FAV);
+    FAV[n] = { t: S.pt, c: S.col[S.pt], size: S.size }; ls.set(K.fav, FAV);
     renderTools();
-    toast(`즐겨찾기 ${n + 1}번에 ‘${PENS[S.pen].label} · ${SIZE_NAMES[S.size]}’을 저장했어요.`);
+    toast(`즐겨찾기 ${n + 1}번에 ‘${penLabel(S.pt, S.col[S.pt])} · ${SIZE_NAMES[S.size]}’을 저장했어요.`);
   }
   viewer.addEventListener('contextmenu', e => { if (e.target.closest('[data-fav]')) e.preventDefault(); });
 
   // 도구 버튼을 꾹 누르면 [빠른 도구에 추가] (이미 있으면 [빼기])
   let qHold = 0, qLong = false, qHoldAt = null;
   const qKeyOf = b => {
-    if (b.dataset.pen != null) return 'pen' + b.dataset.pen;
+    if (b.dataset.pt != null) return 't' + b.dataset.pt;
+    if (b.dataset.sw != null) return 'sw' + b.dataset.sw;
     const a = b.dataset.a;
     if (a === 'laser-x') return laserKind();
     return a && Q_NAMES[a] ? a : null;
@@ -2161,9 +2283,18 @@
     if (b.dataset.a === 'qpop-add' || b.dataset.a === 'qpop-del') { qpopAct(b.dataset.a === 'qpop-add', b.dataset.k); return; }
     if (b.dataset.fav) {
       if (favLong) { favLong = false; return; }
-      const f = FAV[Number(b.dataset.fav)]; S.pen = f.pen; S.size = f.size; setTool('draw'); return;
+      const f = FAV[Number(b.dataset.fav)]; S.pt = f.t; S.col[f.t] = f.c; S.size = f.size; setTool('draw'); return;
     }
-    if (b.dataset.pen) { S.pen = Number(b.dataset.pen); setTool('draw'); return; }
+    if (b.dataset.pt) {
+      const t = b.dataset.pt;
+      if (S.tool === 'draw' && S.pt === t) { openPenPanel(); return; }
+      S.pt = t; setTool('draw'); return;
+    }
+    if (b.dataset.sw) {
+      const i = Number(b.dataset.sw), c = S.sw[S.pt][i];
+      if (S.tool === 'draw' && S.col[S.pt] === c) { openPenPanel(i); return; }
+      S.col[S.pt] = c; setTool('draw'); return;
+    }
     if (b.dataset.stamp) { S.stamp = b.dataset.stamp; if (S.tool !== 'stamp') toast('채점할 곳을 톡 누르면 도장이 찍혀요. 크기는 [굵기]로 바꿔요.'); setTool('stamp'); return; }
     const a = b.dataset.a;
     switch (a) {
@@ -2180,6 +2311,7 @@
       case 'clip': setTool('draw'); break;
       case 'curtain': toggleCurtain(); break;
       case 'q-edit': openQbarEdit(); break;
+      case 'penpanel': openPenPanel(); break;
       case 'qbar': toggleQbar(); break;
       case 'ruler': case 'prot': toggleGuide(a); break;
       case 'photo': photoPage = S.pages[S.cur]; $('#img-in').click(); break;
@@ -2269,9 +2401,8 @@
   // ════════════════ 글자 넣기·고치기 ════════════════
   function openText(pg, pt) {
     const item = (() => { for (let j = pg.ink.length - 1; j >= 0; j--) { const s = pg.ink[j]; if (s.k === 'text' && hitItem(s, pt[0], pt[1], 4 / S.scale)) return s; } return null; })();
-    const pen = PENS[S.pen];
     let fsI = item ? Math.max(0, TEXT_SIZES.indexOf(item.fs)) : S.size;
-    const color = item ? item.c : pen.k === 'pen' ? pen.c : PENS[0].c;
+    const color = item ? item.c : S.pt !== 'hl' && S.col[S.pt] !== '#FFFFFF' ? S.col[S.pt] : '#1B2430';
     const html = () => `
       <h2>${item ? '글자 고치기' : '글자 넣기'}</h2>
       <textarea id="tx" rows="3" placeholder="여기에 적어요 (줄 바꿈 가능)">${esc(item ? item.t : ($('#tx') ? $('#tx').value : ''))}</textarea>
@@ -2521,14 +2652,14 @@
             continue;
           }
           if (s.k !== 'pen' && s.k !== 'hl') continue;
-          const opt = { x: 0, y: 0, borderColor: hex(s.c), borderLineCap: LineCapStyle.Round, borderOpacity: s.k === 'hl' ? HL_ALPHA : 1 };
+          const opt = { x: 0, y: 0, borderColor: hex(s.c), borderLineCap: LineCapStyle.Round, borderOpacity: s.k === 'hl' ? HL_ALPHA : s.t === 'pencil' ? PENCIL_AL : 1 };
           const pts = s.p;
           if (s.sh) {
             let dd = `M ${P(pts[0][0], pts[0][1])}`;
             for (let n = 1; n < pts.length; n++) dd += ` L ${P(pts[n][0], pts[n][1])}`;
             if (pts.length === 1) dd += ` L ${P(pts[0][0] + 0.01, pts[0][1])}`;
             page.drawSvgPath(dd, Object.assign(opt, { borderWidth: s.w }));
-          } else if (s.k === 'hl' || !s.pr || pts.length < 3) {
+          } else if (s.k === 'hl' || (!s.pr && s.t !== 'nib') || pts.length < 3) {
             let dd = `M ${P(pts[0][0], pts[0][1])}`;
             if (pts.length === 1) dd += ` L ${P(pts[0][0] + 0.01, pts[0][1])}`;
             else if (pts.length === 2) dd += ` L ${P(pts[1][0], pts[1][1])}`;
@@ -2536,14 +2667,19 @@
               for (let n = 1; n < pts.length - 1; n++) dd += ` Q ${P(pts[n][0], pts[n][1])} ${P((pts[n][0] + pts[n + 1][0]) / 2, (pts[n][1] + pts[n + 1][1]) / 2)}`;
               dd += ` L ${P(pts[pts.length - 1][0], pts[pts.length - 1][1])}`;
             }
-            page.drawSvgPath(dd, Object.assign(opt, { borderWidth: s.k === 'hl' || !s.pr ? s.w : widthAt(s, pts[0][2]) }));
+            page.drawSvgPath(dd, Object.assign(opt, { borderWidth: s.k === 'hl' || !s.pr ? s.w * (s.t === 'nib' ? 0.6 : 1) : widthAt(s, pts[0][2]) }));
           } else {
-            segments(pts, (a, c, b, pr) => page.drawSvgPath(`M ${P(a[0], a[1])} Q ${P(c[0], c[1])} ${P(b[0], b[1])}`, Object.assign({}, opt, { borderWidth: widthAt(s, pr) })));
+            for (const g of strokeSegs(s)) {
+              const o = Object.assign({}, opt, { borderWidth: g.w });
+              if (s.t === 'pencil') Object.assign(o, { borderOpacity: g.al, borderLineCap: LineCapStyle.Butt });
+              page.drawSvgPath(`M ${P(g.a[0], g.a[1])} Q ${P(g.c[0], g.c[1])} ${P(g.b[0], g.b[1])}`, o);
+            }
           }
         }
       }
       return new Blob([await doc.save()], { type: 'application/pdf' });
     } catch (err) {
+      window.__pdfFallback = true;
       const doc = await PDFDocument.create();
       for (let d = 0; d < S.pages.length; d++) {
         const pg = S.pages[d], vp1 = vps[d], k = Math.min(2, 2400 / Math.max(vp1.width, vp1.height));
@@ -2950,6 +3086,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, goPage, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, goPage, FAV, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();

@@ -253,3 +253,25 @@ button{font:inherit; color:inherit}
 .qghost .tb{width:44px; height:42px; padding:0; justify-content:center}
 .qghost.out{background:#FDE3E1; border-color:#D2372A}
 .qghost.out::after{content:'놓으면 빼기'; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:6px; white-space:nowrap; font-size:12px; font-weight:600; color:#fff; background:#D2372A; border-radius:8px; padding:3px 8px}
+/* 펜 종류 버튼: 아이콘 아래에 지금 색 */
+.tb.pt{position:relative; flex-direction:row}
+.tb.pt .ptc{position:absolute; left:50%; bottom:3px; width:16px; height:3px; margin-left:-8px; border-radius:2px; box-shadow:0 0 0 .5px rgba(0,0,0,.25)}
+.tb.pt:has(.lbl) .ptc{left:19px}
+.dot.pc{opacity:.8}
+/* 펜·색 고르기 */
+.modal .pp-types{display:grid; grid-template-columns:repeat(4, 1fr); gap:6px}
+.modal .pp-types .tb{flex-direction:column; height:58px; gap:2px; justify-content:center; padding:0 2px}
+.modal .pp-types .tb .ptc{left:50%; margin-left:-8px; bottom:auto; top:31px}
+.modal .pp-types .tb .lbl{margin-top:6px}
+.modal .pp-prev{display:block; width:100%; height:64px; margin:10px 0 0; background:var(--paper); border:1px solid var(--line); border-radius:12px}
+.modal .pp-slots{display:flex; gap:8px}
+.modal .pp-slot{position:relative; width:52px; height:44px; border-radius:12px; border:1px solid var(--line); background:var(--paper); display:flex; align-items:center; justify-content:center; cursor:pointer}
+.modal .pp-slot[aria-pressed="true"]{border:2px solid var(--sel); background:var(--sel-soft)}
+.modal .pp-slot small{position:absolute; right:4px; top:2px; font-size:10px; color:var(--muted)}
+.modal .pp-cols{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+.modal .pp-col{width:34px; height:34px; border-radius:50%; border:2px solid var(--card); box-shadow:0 0 0 1px var(--line); cursor:pointer; padding:0}
+.modal .pp-col.on{box-shadow:0 0 0 3px var(--sel)}
+.modal .pp-custom{display:inline-flex; align-items:center; gap:6px; margin:0; font-size:13px; color:var(--muted); cursor:pointer}
+.modal .pp-custom input{width:38px; height:34px; padding:0; border:1px solid var(--line); border-radius:10px; background:none}
+.modal .pp-sizes{display:flex; gap:6px}
+.modal .pp-sizes .tb{border:1px solid var(--line)}
