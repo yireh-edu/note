@@ -230,16 +230,13 @@ button{font:inherit; color:inherit}
 .edge-flash{position:fixed; top:50%; width:52px; height:52px; margin-top:-26px; border-radius:50%; background:rgba(20,28,40,.55); color:#fff; font-size:40px; line-height:46px; text-align:center; pointer-events:none; z-index:20; animation:eflash .6s ease-out forwards}
 .edge-flash.l{left:12px} .edge-flash.r{right:12px}
 @keyframes eflash{0%{opacity:0; transform:scale(.7)}25%{opacity:1; transform:scale(1)}100%{opacity:0}}
-/* 빠른 도구: 화면 옆에 떠 있는 세로 막대 */
-.qbar{position:absolute; right:max(10px, env(safe-area-inset-right)); top:40%; z-index:6; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px; background:var(--bar); border:1px solid var(--line); border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,.18); max-height:calc(100% - 16px); overflow-y:auto; touch-action:none}
+/* 빠른 도구: 화면 옆에 떠 있는 동그라미들 (판 없음) */
+.qbar{position:absolute; right:max(12px, env(safe-area-inset-right)); top:40%; z-index:6; display:flex; flex-direction:column; align-items:center; gap:10px; padding:2px; max-height:calc(100% - 16px); overflow-y:auto; touch-action:none; pointer-events:none}
 .qbar[hidden]{display:none}
-.qbar.l{right:auto; left:max(10px, env(safe-area-inset-left))}
-.qbar .tb{width:44px; height:42px; padding:0; justify-content:center}
-.qbar .qgrip{width:44px; height:22px; border:0; background:none; display:flex; align-items:center; justify-content:center; gap:3px; cursor:grab; touch-action:none; color:var(--muted)}
-.qbar .qgrip span{width:4px; height:4px; border-radius:50%; background:currentColor}
-.qbar.fold .qgrip{height:34px}
-.qbar .qedit{color:var(--muted)}
-.qbar .qedit svg{width:17px; height:17px}
+.qbar.l{right:auto; left:max(12px, env(safe-area-inset-left))}
+.qbar .tb, .qghost .tb{pointer-events:auto; width:48px; height:48px; padding:0; justify-content:center; border-radius:50%; background:var(--bar); border:1px solid var(--line); box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.qbar .tb[aria-pressed="true"]{background:var(--sel-soft); border:2px solid var(--sel)}
+.qbar .tb.pt .ptc{bottom:7px}
 .modal .qpicks{display:grid; grid-template-columns:1fr 1fr; gap:0 10px}
 .modal label.qpick{margin:6px 0}
 /* 꾹 누르면 뜨는 [빠른 도구에 추가] */
@@ -249,10 +246,11 @@ button{font:inherit; color:inherit}
 .qpop small{font-weight:400; opacity:.75; margin-left:4px}
 .qpop .qtip{display:block; color:var(--btn-ink); opacity:.7; font-size:12px; padding:0 14px 8px}
 .qbar .tb.lifted{opacity:.25}
-.qghost{position:fixed; z-index:31; pointer-events:none; background:var(--bar); border:1px solid var(--sel); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.3); transform:scale(1.12); transition:background .15s, border-color .15s}
-.qghost .tb{width:44px; height:42px; padding:0; justify-content:center}
-.qghost.out{background:#FDE3E1; border-color:#D2372A}
-.qghost.out::after{content:'놓으면 빼기'; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:6px; white-space:nowrap; font-size:12px; font-weight:600; color:#fff; background:#D2372A; border-radius:8px; padding:3px 8px}
+.qghost{position:fixed; z-index:31; pointer-events:none; transform:scale(1.15)}
+.qghost.out .tb{background:#FDE3E1; border:2px solid #D2372A; opacity:.85}
+.qtrash{position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:30; display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:999px; background:rgba(20,28,40,.78); color:#fff; font-size:14px; font-weight:600; pointer-events:none; transition:background .15s, transform .15s}
+.qtrash svg{width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.qtrash.on{background:#D2372A; transform:translateX(-50%) scale(1.12)}
 /* 펜 종류 버튼: 아이콘 아래에 지금 색 */
 .tb.pt{position:relative; flex-direction:row}
 .tb.pt .ptc{position:absolute; left:50%; bottom:3px; width:16px; height:3px; margin-left:-8px; border-radius:2px; box-shadow:0 0 0 .5px rgba(0,0,0,.25)}

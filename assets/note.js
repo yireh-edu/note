@@ -130,7 +130,6 @@
     laser2: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1" /><path d="M3 15c1.5-2 3-2 4.5-.5M2.5 11c2-3 4.5-3.5 6.5-2" stroke-dasharray="2 2"/></svg>',
     laser3: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-dasharray="1.5 2.5"/></svg>',
     laser4: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1M11 9.5L2.5 18M14.5 13L6 21.5"/></svg>',
-    qedit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
     qbar: '<svg viewBox="0 0 24 24"><rect x="15" y="3" width="6" height="18" rx="3"/><path d="M3 7h8M3 12h8M3 17h8"/></svg>',
     pencil: '<svg viewBox="0 0 24 24"><path d="M5 19l1.2-4.4L16.4 4.4a1.8 1.8 0 012.6 0l.6.6a1.8 1.8 0 010 2.6L9.4 17.8z"/><path d="M14.6 6.2l3.2 3.2M5 19l4.4-1.2"/></svg>',
     pen: '<svg viewBox="0 0 24 24"><path d="M18.5 3.5l2 2L9 17l-3.2 1.2L7 15z"/><path d="M16.5 5.5l2 2M4 20l1.8-1.8"/></svg>',
@@ -1959,12 +1958,12 @@
     ['undo', '되돌리기'], ['redo', '다시 하기'], ['thumbs', '쪽 목록'], ['timer', '타이머'],
   ];
   const Q_NAMES = Object.fromEntries(Q_ITEMS);
-  const Q0 = { items: ['fav0', 'fav1', 'fav2', 'laser4', 'erase', 'undo'], side: 'r', y: 0.3, fold: false, show: false };   // 처음엔 숨김: [빠른 도구] 버튼으로 켬   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
+  const Q0 = { items: ['fav0', 'fav1', 'fav2', 'laser4', 'erase', 'undo'], side: 'r', y: 0.3, show: false };   // 처음엔 숨김: [빠른 도구] 버튼으로 켬   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
   const Q = (q => {
     const o = Object.assign({}, Q0, q && typeof q === 'object' ? q : {});
     // 예전 펜 칸(pen0~4) → 볼펜·형광펜
     o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : k))].filter(k => Q_NAMES[k]) : Q0.items.slice();
-    o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.fold = !!o.fold; o.show = !!o.show;
+    o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.show = !!o.show; delete o.fold;
     return o;
   })(ls.get(K.qbar, null));
   const saveQ = () => ls.set(K.qbar, Q);
@@ -1983,49 +1982,24 @@
   }
   function renderQbar() {
     const el = $('#qbar');
-    el.hidden = !Q.show;
-    if (!Q.show) { el.innerHTML = ''; return; }
-    el.classList.toggle('l', Q.side === 'l'); el.classList.toggle('fold', Q.fold);
-    el.innerHTML = `<button class="qgrip" type="button" data-q="grip" aria-label="빠른 도구 옮기기 (톡 누르면 ${Q.fold ? '펴기' : '접기'})" title="끌어서 옮기기 · 톡 누르면 ${Q.fold ? '펴기' : '접기'}"><span></span><span></span><span></span></button>`
-      + (Q.fold ? '' : Q.items.map(qButton).join('') + `<button class="tb qedit" type="button" data-a="q-edit" aria-label="빠른 도구 고르기" title="빠른 도구 고르기">${I.qedit}</button>`
-        + `<button class="tb qedit" type="button" data-a="qbar" aria-label="빠른 도구 끄기" title="빠른 도구 끄기">${I.close}</button>`);
+    // 판(막대) 없이 넣은 것만 동그란 버튼으로. 옮기기·빼기는 동그라미를 꾹 눌러 끌기
+    el.hidden = !Q.show || !Q.items.length;
+    if (el.hidden) { el.innerHTML = ''; return; }
+    el.classList.toggle('l', Q.side === 'l');
+    el.innerHTML = Q.items.map(qButton).join('');
     placeQbar();
   }
   function placeQbar() {
     const el = $('#qbar'), wrap = el.parentElement;
     const H = wrap.clientHeight, h = el.offsetHeight;
-    el.style.top = clamp(Q.y * H - 15, 8, Math.max(8, H - h - 8)) + 'px';
+    el.style.top = clamp(Q.y * H - 24, 8, Math.max(8, H - h - 8)) + 'px';   // Q.y: 첫 동그라미 가운데 높이
   }
   window.addEventListener('resize', () => { if (!viewer.hidden) placeQbar(); });
-  {
-    let qd = null;
-    const qbarEl = $('#qbar');
-    qbarEl.addEventListener('pointerdown', e => {
-      if (!e.target.closest('[data-q="grip"]')) return;
-      e.preventDefault();
-      qd = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false };
-      try { qbarEl.setPointerCapture(e.pointerId); } catch (err) {}
-    });
-    qbarEl.addEventListener('pointermove', e => {
-      if (!qd || e.pointerId !== qd.id) return;
-      if (!qd.moved && Math.hypot(e.clientX - qd.x0, e.clientY - qd.y0) < 8) return;
-      qd.moved = true;
-      const r = qbarEl.parentElement.getBoundingClientRect();
-      Q.y = clamp((e.clientY - r.top) / r.height, 0, 1);
-      Q.side = e.clientX < r.left + r.width / 2 ? 'l' : 'r';
-      qbarEl.classList.toggle('l', Q.side === 'l'); placeQbar();
-    });
-    const up = e => {
-      if (!qd || e.pointerId !== qd.id) return;
-      const tap = !qd.moved; qd = null;
-      if (tap && e.type === 'pointerup') { Q.fold = !Q.fold; renderQbar(); }
-      saveQ();
-    };
-    qbarEl.addEventListener('pointerup', up); qbarEl.addEventListener('pointercancel', up);
-  }
   function toggleQbar() {
-    Q.show = !Q.show; if (Q.show) Q.fold = false; saveQ(); renderTools();
-    toast(Q.show ? '빠른 도구를 켰어요. 맨 위 손잡이(•••)를 끌어 원하는 곳에 두고, [✎]로 넣을 것을 골라요.' : '빠른 도구를 껐어요. 도구 줄의 [빠른 도구]나 [더보기]에서 다시 켤 수 있어요.', 3600);
+    Q.show = !Q.show; saveQ(); renderTools();
+    toast(!Q.show ? '빠른 도구를 숨겼어요. 도구 줄의 [빠른 도구]나 [더보기]에서 다시 보이게 할 수 있어요.'
+      : Q.items.length ? '빠른 도구가 보여요. 동그라미를 꾹 눌러 끌면 옮기고, 아래 휴지통으로 끌면 빠져요.'
+      : '빠른 도구가 비어 있어요. 도구 버튼을 꾹 눌러 [★ 빠른 도구에 추가]를 누르세요.', 3600);
   }
   // ════════════════ 펜·색 고르기 ════════════════
   // 종류 · 색(팔레트·직접 고르기) · 굵기를 한곳에서. 고른 색은 지금 고른 색 칸(없으면 3번 칸)에 들어감
@@ -2077,14 +2051,14 @@
     const row = ([k, label]) => `<label class="check qpick"><input type="checkbox" data-k="${k}"${on.has(k) ? ' checked' : ''}> ${esc(label)}</label>`;
     showModal(`
       <h2>빠른 도구 고르기</h2>
-      <p>화면 옆 막대에 둘 것을 고르세요. 막대 맨 위 손잡이를 끌면 옮기고(왼쪽·오른쪽), 톡 누르면 접혀요.</p>
+      <p>화면 옆에 동그랗게 띄울 것을 고르세요. 도구 줄의 버튼을 꾹 눌러도 넣을 수 있어요.</p>
       <div class="qpicks">${Q_ITEMS.map(row).join('')}</div>
       <div class="row"><button class="btn ghost" type="button" data-m="reset">처음대로</button><button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">저장</button></div>`, b => {
       if (b.dataset.m === 'reset') { $('#modal-card').querySelectorAll('[data-k]').forEach(x => { x.checked = Q0.items.includes(x.dataset.k); }); return; }
       if (b.dataset.m !== 'ok') return;
       Q.items = [...$('#modal-card').querySelectorAll('[data-k]')].filter(x => x.checked).map(x => x.dataset.k);
-      Q.fold = false; saveQ(); closeModal(); renderQbar();
-      if (!Q.items.length) toast('빠른 도구가 비었어요. [✎]를 눌러 다시 고를 수 있어요.');
+      Q.show = true; saveQ(); closeModal(); renderTools();
+      if (!Q.items.length) toast('빠른 도구가 비었어요. 도구 버튼을 꾹 눌러 넣을 수 있어요.');
     });
   }
   function renderTools() {
@@ -2224,15 +2198,17 @@
     if (qDrag && e.pointerId === qDrag.id) { moveQDrag(e); return; }
     if (qHoldAt && Math.hypot(e.clientX - qHoldAt.x, e.clientY - qHoldAt.y) > 10) { clearTimeout(qHold); qHoldAt = null; }
   });
-  for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, e => { clearTimeout(qHold); qHoldAt = null; if (qDrag && e.pointerId === qDrag.id) endQDrag(e.type === 'pointerup'); });
+  for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, e => { clearTimeout(qHold); qHoldAt = null; if (qDrag && e.pointerId === qDrag.id) endQDrag(e.type === 'pointerup'); if (qLong) setTimeout(() => { qLong = false; }, 60); });   // 꾹 누른 뒤 따라오는 click 하나만 막음
   // 빠른 도구 버튼을 꾹 눌러 막대 밖으로(아래로) 끌어 놓으면 빠짐. 안 끌고 놓으면 [빼기] 단추
   let qDrag = null;
-  const Q_OUT = 60;
+  // 꾹 누른 동그라미를 끌면: 아래 휴지통에 놓으면 빼기, 다른 곳에 놓으면 빠른 도구 전체를 그리로 옮기기(왼쪽·오른쪽)
   function startQDrag(b, k, id, at) {
     const r = b.getBoundingClientRect();
     const gh = document.createElement('div'); gh.className = 'qghost';
     gh.appendChild(b.cloneNode(true)); viewer.appendChild(gh);
-    qDrag = { b, k, id, x0: at.x, y0: at.y, dx: at.x - r.left, dy: at.y - r.top, gh, out: false };
+    clearTimeout(toastTimer); $('#toast').hidden = true;   // 아래 휴지통을 가리지 않게
+    const tr = document.createElement('div'); tr.className = 'qtrash'; tr.innerHTML = `${I.trash}<span>여기에 놓으면 빼기</span>`; viewer.appendChild(tr);
+    qDrag = { b, k, id, x0: at.x, y0: at.y, dx: at.x - r.left, dy: at.y - r.top, gh, tr, out: false, moved: false, x: at.x, y: at.y };
     b.classList.add('lifted');
     gh.style.left = r.left + 'px'; gh.style.top = r.top + 'px';
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (err) {}
@@ -2240,14 +2216,24 @@
   function moveQDrag(e) {
     const d = qDrag;
     d.gh.style.left = e.clientX - d.dx + 'px'; d.gh.style.top = e.clientY - d.dy + 'px';
-    d.out = Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > Q_OUT;
-    d.gh.classList.toggle('out', d.out);
+    d.x = e.clientX; d.y = e.clientY;
+    if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 24) d.moved = true;
+    const t = d.tr.getBoundingClientRect();
+    d.out = e.clientY > t.top - 30;   // 휴지통 높이까지 내리면
+    d.gh.classList.toggle('out', d.out); d.tr.classList.toggle('on', d.out);
   }
   function endQDrag(ok) {
     const d = qDrag; qDrag = null;
-    d.gh.remove(); d.b.classList.remove('lifted');
-    if (ok && d.out) qpopAct(false, d.k);
-    else if (ok) showQpop(d.b, d.k);
+    d.gh.remove(); d.tr.remove(); d.b.classList.remove('lifted');
+    if (!ok) return;
+    if (d.out) qpopAct(false, d.k);
+    else if (d.moved) {
+      const wr = $('#qbar').parentElement.getBoundingClientRect(), first = $('#qbar').firstElementChild.getBoundingClientRect();
+      // 끈 동그라미가 놓인 자리로 전체를 옮김 (첫 동그라미 기준으로 환산)
+      Q.y = clamp((d.y - (d.b.getBoundingClientRect().top - first.top) - wr.top) / wr.height, 0, 1);
+      Q.side = d.x < wr.left + wr.width / 2 ? 'l' : 'r';
+      saveQ(); renderQbar();
+    } else showQpop(d.b, d.k);
   }
   viewer.addEventListener('contextmenu', e => { if (e.target.closest('#tools .tb, #pbar .tb, #qbar .tb')) e.preventDefault(); });
   function showQpop(b, k) {
@@ -2255,7 +2241,7 @@
     pop.innerHTML = has
       ? `<button type="button" data-a="qpop-del" data-k="${k}">빠른 도구에서 빼기 <small>${esc(Q_NAMES[k])}</small></button>`
       : `<button type="button" data-a="qpop-add" data-k="${k}">★ 빠른 도구에 추가 <small>${esc(Q_NAMES[k])}</small></button>`;
-    if (has && b.closest('#qbar')) pop.innerHTML += `<span class="qtip">꾹 눌러 끌어 내려도 빠져요</span>`;
+    if (has && b.closest('#qbar')) pop.innerHTML += `<span class="qtip">꾹 눌러 끌면 옮기고, 아래 휴지통으로 끌면 빠져요</span>`;
     pop.hidden = false;
     const r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
     const below = r.bottom + 6 + h < window.innerHeight;
@@ -2268,8 +2254,8 @@
     hideQpop();
     if (add) {
       if (!Q.items.includes(k)) Q.items.push(k);
-      Q.show = true; Q.fold = false; saveQ(); renderTools();
-      toast(`빠른 도구에 ‘${Q_NAMES[k]}’${josa(Q_NAMES[k], '을', '를').slice(-1)} 넣었어요. 빼려면 막대에서 꾹 눌러 끌어 내리세요.`, 3000);
+      Q.show = true; saveQ(); renderTools();
+      toast(`빠른 도구에 ‘${Q_NAMES[k]}’${josa(Q_NAMES[k], '을', '를').slice(-1)} 넣었어요. 동그라미를 꾹 눌러 끌면 옮기고, 아래 휴지통으로 끌면 빠져요.`, 3400);
     } else {
       Q.items = Q.items.filter(x => x !== k); saveQ(); renderTools();
       toast(`빠른 도구에서 ‘${Q_NAMES[k]}’${josa(Q_NAMES[k], '을', '를').slice(-1)} 뺐어요.`, 2400);
@@ -2310,7 +2296,6 @@
       case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'cover': case 'text': case 'lasso': setTool(a); break;
       case 'clip': setTool('draw'); break;
       case 'curtain': toggleCurtain(); break;
-      case 'q-edit': openQbarEdit(); break;
       case 'penpanel': openPenPanel(); break;
       case 'qbar': toggleQbar(); break;
       case 'ruler': case 'prot': toggleGuide(a); break;
@@ -2367,7 +2352,8 @@
       ${pg.blank ? `<button class="btn ghost wide${armed === 'rm' ? ' armed' : ''}" type="button" data-m="rm">${armed === 'rm' ? '한 번 더 누르면 뺄게요' : `이 넣은 쪽 빼기 (${n}쪽)`}</button>` : ''}
       <p class="mh">수업</p>
       <button class="btn ghost wide" type="button" data-m="pick">발표자 뽑기</button>
-      <button class="btn ghost wide" type="button" data-m="qbar">빠른 도구 (화면 옆 막대): <b>${Q.show ? '켜짐' : '꺼짐'}</b></button>
+      <button class="btn ghost wide" type="button" data-m="qbar">빠른 도구 (화면 옆 동그라미): <b>${Q.show ? '보임' : '숨김'}</b></button>
+      <button class="btn ghost wide" type="button" data-m="qedit">빠른 도구에 넣을 것 고르기</button>
       <button class="btn ghost wide" type="button" data-m="replay">필기 다시 보기 <small>(${n}쪽, 쓴 순서대로)</small></button>
       <p class="mh">숙제</p>
       ${isGrade() ? '<button class="btn ghost wide" type="button" data-m="score">점수 매기기 <small>(도장 ○ ✓ ✗ 세기)</small></button>' : ''}
@@ -2384,6 +2370,7 @@
       if (m === 'pick') { closeModal(); openPicker(); return; }
       if (m === 'replay') { closeModal(); startReplay(); return; }
       if (m === 'qbar') { closeModal(); toggleQbar(); return; }
+      if (m === 'qedit') { closeModal(); openQbarEdit(); return; }
       if (m === 'score') { closeModal(); openScore(); return; }
       if (m === 'clip') { closeModal(); setTool('clip'); return; }
       if (m === 'rm') { if (armed !== 'rm') { armed = 'rm'; showModal(html(), fn); return; } closeModal(); removeBlank(pg); return; }
