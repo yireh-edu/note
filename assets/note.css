@@ -242,3 +242,14 @@ button{font:inherit; color:inherit}
 .qbar .qedit svg{width:17px; height:17px}
 .modal .qpicks{display:grid; grid-template-columns:1fr 1fr; gap:0 10px}
 .modal label.qpick{margin:6px 0}
+/* 꾹 누르면 뜨는 [빠른 도구에 추가] */
+.qpop{position:fixed; z-index:30; background:var(--ink); border-radius:12px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.qpop[hidden]{display:none}
+.qpop button{border:0; background:none; color:var(--btn-ink); font:inherit; font-size:15px; font-weight:600; padding:10px 14px; cursor:pointer; white-space:nowrap; touch-action:manipulation}
+.qpop small{font-weight:400; opacity:.75; margin-left:4px}
+.qpop .qtip{display:block; color:var(--btn-ink); opacity:.7; font-size:12px; padding:0 14px 8px}
+.qbar .tb.lifted{opacity:.25}
+.qghost{position:fixed; z-index:31; pointer-events:none; background:var(--bar); border:1px solid var(--sel); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.3); transform:scale(1.12); transition:background .15s, border-color .15s}
+.qghost .tb{width:44px; height:42px; padding:0; justify-content:center}
+.qghost.out{background:#FDE3E1; border-color:#D2372A}
+.qghost.out::after{content:'놓으면 빼기'; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:6px; white-space:nowrap; font-size:12px; font-weight:600; color:#fff; background:#D2372A; border-radius:8px; padding:3px 8px}

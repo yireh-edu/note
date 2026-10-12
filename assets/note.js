@@ -171,6 +171,7 @@
       <div class="thumbs" id="thumbs" hidden><div class="thumbs-bar"><b>쪽 목록</b><span class="thumbs-hint" id="thumbs-hint"></span><button class="btn ghost" type="button" data-t="edit">쪽 정리</button><button class="btn ghost" type="button" data-t="close">닫기</button></div><div class="thumbs-grid" id="thumbs-grid"></div></div>
       <div class="pbar" id="pbar" role="toolbar" aria-label="수업 화면 도구"></div>
       <canvas class="fx" id="fx" aria-hidden="true"></canvas>
+      <div class="qpop" id="qpop" hidden></div>
     </div>
     <div class="modal" id="modal" hidden><div class="card" role="dialog" aria-modal="true" id="modal-card"></div></div>
     <div class="toast" id="toast" role="status" hidden></div>
@@ -2075,9 +2076,89 @@
   }
   viewer.addEventListener('contextmenu', e => { if (e.target.closest('[data-fav]')) e.preventDefault(); });
 
+  // 도구 버튼을 꾹 누르면 [빠른 도구에 추가] (이미 있으면 [빼기])
+  let qHold = 0, qLong = false, qHoldAt = null;
+  const qKeyOf = b => {
+    if (b.dataset.pen != null) return 'pen' + b.dataset.pen;
+    const a = b.dataset.a;
+    if (a === 'laser-x') return laserKind();
+    return a && Q_NAMES[a] ? a : null;
+  };
+  viewer.addEventListener('pointerdown', e => {
+    qLong = false; clearTimeout(qHold);
+    const pop = $('#qpop');
+    if (!pop.hidden && !e.target.closest('#qpop')) hideQpop();
+    const b = e.target.closest('#tools .tb, #pbar .tb, #qbar .tb');
+    if (!b || b.dataset.fav != null) return;
+    const k = qKeyOf(b); if (!k) return;
+    qHoldAt = { x: e.clientX, y: e.clientY };
+    qHold = setTimeout(() => {
+      qLong = true;
+      if (b.closest('#qbar')) startQDrag(b, k, e.pointerId, qHoldAt);   // 빠른 도구 안: 꾹 눌러 끌어 내리면 빼기
+      else showQpop(b, k);
+    }, 550);
+  });
+  viewer.addEventListener('pointermove', e => {
+    if (qDrag && e.pointerId === qDrag.id) { moveQDrag(e); return; }
+    if (qHoldAt && Math.hypot(e.clientX - qHoldAt.x, e.clientY - qHoldAt.y) > 10) { clearTimeout(qHold); qHoldAt = null; }
+  });
+  for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, e => { clearTimeout(qHold); qHoldAt = null; if (qDrag && e.pointerId === qDrag.id) endQDrag(e.type === 'pointerup'); });
+  // 빠른 도구 버튼을 꾹 눌러 막대 밖으로(아래로) 끌어 놓으면 빠짐. 안 끌고 놓으면 [빼기] 단추
+  let qDrag = null;
+  const Q_OUT = 60;
+  function startQDrag(b, k, id, at) {
+    const r = b.getBoundingClientRect();
+    const gh = document.createElement('div'); gh.className = 'qghost';
+    gh.appendChild(b.cloneNode(true)); viewer.appendChild(gh);
+    qDrag = { b, k, id, x0: at.x, y0: at.y, dx: at.x - r.left, dy: at.y - r.top, gh, out: false };
+    b.classList.add('lifted');
+    gh.style.left = r.left + 'px'; gh.style.top = r.top + 'px';
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (err) {}
+  }
+  function moveQDrag(e) {
+    const d = qDrag;
+    d.gh.style.left = e.clientX - d.dx + 'px'; d.gh.style.top = e.clientY - d.dy + 'px';
+    d.out = Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > Q_OUT;
+    d.gh.classList.toggle('out', d.out);
+  }
+  function endQDrag(ok) {
+    const d = qDrag; qDrag = null;
+    d.gh.remove(); d.b.classList.remove('lifted');
+    if (ok && d.out) qpopAct(false, d.k);
+    else if (ok) showQpop(d.b, d.k);
+  }
+  viewer.addEventListener('contextmenu', e => { if (e.target.closest('#tools .tb, #pbar .tb, #qbar .tb')) e.preventDefault(); });
+  function showQpop(b, k) {
+    const pop = $('#qpop'), has = Q.items.includes(k) && Q.show;
+    pop.innerHTML = has
+      ? `<button type="button" data-a="qpop-del" data-k="${k}">빠른 도구에서 빼기 <small>${esc(Q_NAMES[k])}</small></button>`
+      : `<button type="button" data-a="qpop-add" data-k="${k}">★ 빠른 도구에 추가 <small>${esc(Q_NAMES[k])}</small></button>`;
+    if (has && b.closest('#qbar')) pop.innerHTML += `<span class="qtip">꾹 눌러 끌어 내려도 빠져요</span>`;
+    pop.hidden = false;
+    const r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    const below = r.bottom + 6 + h < window.innerHeight;
+    pop.style.left = clamp(r.left + r.width / 2 - w / 2, 8, window.innerWidth - w - 8) + 'px';
+    pop.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (err) {}
+  }
+  function hideQpop() { const p = $('#qpop'); p.hidden = true; p.innerHTML = ''; }
+  function qpopAct(add, k) {
+    hideQpop();
+    if (add) {
+      if (!Q.items.includes(k)) Q.items.push(k);
+      Q.show = true; Q.fold = false; saveQ(); renderTools();
+      toast(`빠른 도구에 ‘${Q_NAMES[k]}’${josa(Q_NAMES[k], '을', '를').slice(-1)} 넣었어요. 빼려면 막대에서 꾹 눌러 끌어 내리세요.`, 3000);
+    } else {
+      Q.items = Q.items.filter(x => x !== k); saveQ(); renderTools();
+      toast(`빠른 도구에서 ‘${Q_NAMES[k]}’${josa(Q_NAMES[k], '을', '를').slice(-1)} 뺐어요.`, 2400);
+    }
+  }
+
   let clearArmed = false;
   viewer.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !viewer.contains(b)) return;
+    if (qLong) { qLong = false; return; }   // 꾹 누른 뒤 손을 뗀 것 → 버튼 기능은 안 함
+    if (b.dataset.a === 'qpop-add' || b.dataset.a === 'qpop-del') { qpopAct(b.dataset.a === 'qpop-add', b.dataset.k); return; }
     if (b.dataset.fav) {
       if (favLong) { favLong = false; return; }
       const f = FAV[Number(b.dataset.fav)]; S.pen = f.pen; S.size = f.size; setTool('draw'); return;
