@@ -820,7 +820,7 @@
   const fx = $('#fx');
   const FX = { trail: [], strokes: [], head: null, ring: null, raf: 0 };
   const LASER_LIFE = { laser: 700, laser2: 1600, laser3: 1600 };   // 꼬리가 남는 시간(ms) — 긴 레이저·광선 레이저는 더 오래 남음
-  const ONCE_HOLD = 600, ONCE_FADE = 1000;   // 한번에 광선: 펜을 떼고 이만큼 그대로 있다가, 선 전체가 함께 깜빡이며 사라짐
+  const ONCE_HOLD = 1000, ONCE_FADE = 1000;   // 한번에 광선: 펜을 떼고 이만큼 그대로 있다가, 선 전체가 함께 서서히 사라짐
   function fxKick() { if (!FX.raf) FX.raf = requestAnimationFrame(fxFrame); }
   function fxFrame() {
     FX.raf = 0;
@@ -875,12 +875,12 @@
       }
       ctx.shadowBlur = 0;
     }
-    // 한번에 광선: 획 전체를 한 줄로, 처음과 끝이 똑같은 밝기로 함께 깜빡이며 사라짐
+    // 한번에 광선: 획 전체를 한 줄로, 처음과 끝이 똑같은 밝기로 함께 서서히 사라짐
     FX.strokes = FX.strokes.filter(g => !g.end || now - g.end < ONCE_HOLD + ONCE_FADE);
     for (const g of FX.strokes) {
       if (g.pts.length < 2) continue;
       const al = !g.end || now - g.end < ONCE_HOLD ? 1 : 1 - (now - g.end - ONCE_HOLD) / ONCE_FADE;
-      const a = al * (1 - (1 - al) * 0.8 * (0.5 + 0.5 * Math.sin(now / 38)));
+      const a = al * al * (3 - 2 * al);   // 부드럽게 옅어짐 (깜빡임 없음)
       ctx.beginPath(); ctx.moveTo(g.pts[0].x, g.pts[0].y); for (const p of g.pts) ctx.lineTo(p.x, p.y);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.shadowColor = 'rgba(255,30,50,.9)'; ctx.shadowBlur = 6 + 14 * a;
@@ -1922,7 +1922,7 @@
     laser: '레이저: 펜으로 가리키면 빨간 꼬리가 잠깐 보였다 사라져요. 필기는 남지 않아요.',
     laser2: '긴 레이저: 광선검처럼 빛나는 꼬리가 더 오래 남아 반짝이다 사라져요. 필기는 남지 않아요.',
     laser3: '광선 레이저: 광선검처럼 빛나는 꼬리가 오래 남아 깜빡이다 사라져요. 별은 없어요. 필기는 남지 않아요.',
-    laser4: '한번에 광선: 펜을 떼면 그은 선 전체가 처음부터 끝까지 다 같이 깜빡이며 사라져요. 필기는 남지 않아요.',
+    laser4: '한번에 광선: 펜을 떼고 1초 뒤, 그은 선 전체가 처음부터 끝까지 다 같이 서서히 사라져요. 필기는 남지 않아요.',
     cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
     lasso: '올가미: 필기를 빙 둘러 그리거나 톡 눌러 골라요. 끌어서 옮기고, 오른쪽 아래 ●로 크기를 바꿔요.',
