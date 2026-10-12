@@ -828,13 +828,57 @@
     const now = performance.now();
     FX.trail = FX.trail.filter(p => now - p.t < p.l);
     ctx.lineCap = 'round';
+    const seg = (a, b, c, w) => { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); };
+    const glow = [];
     for (let n = 1; n < FX.trail.length; n++) {
       const a = FX.trail[n - 1], b = FX.trail[n]; if (b.gap) continue;
       const al = 1 - (now - b.t) / b.l;
-      ctx.strokeStyle = `rgba(255,45,45,${(al * 0.85).toFixed(3)})`; ctx.lineWidth = 2.5 + 4 * al;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      if (b.g) glow.push([a, b, al, n]);
+      else seg(a, b, `rgba(255,45,45,${(al * 0.85).toFixed(3)})`, 2.5 + 4 * al);
     }
-    if (FX.head) {
+    // 긴 레이저: 광선검처럼 빨간 빛무리 + 하얀 심, 사라질 때가 가까울수록 반짝반짝
+    if (glow.length) {
+      // 몇 마디씩 한 줄로 이어 그림 (마디마다 따로 그리면 겹친 곳이 구슬처럼 보임)
+      const chunks = [];
+      for (const g of glow) {
+        const c = chunks[chunks.length - 1];
+        if (c && c.n.length < 6 && c.last === g[0]) { c.n.push(g); c.last = g[1]; } else chunks.push({ n: [g], last: g[1] });
+      }
+      const path = c => { ctx.beginPath(); ctx.moveTo(c.n[0][0].x, c.n[0][0].y); for (const g of c.n) ctx.lineTo(g[1].x, g[1].y); };
+      ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+      chunks.forEach((c, i) => {
+        const al = c.n[c.n.length - 1][2];
+        c.a = al * (1 - (1 - al) * 0.8 * (0.5 + 0.5 * Math.sin(now / 38 + i * 2.1)));   // 늙을수록 깜빡임
+      });
+      ctx.shadowColor = 'rgba(255,30,50,.9)';
+      for (const c of chunks) {
+        ctx.shadowBlur = 6 + 14 * c.a; ctx.strokeStyle = `rgba(255,40,55,${(c.a * 0.9).toFixed(3)})`; ctx.lineWidth = 3 + 5 * c.a; path(c); ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      for (const c of chunks) { ctx.strokeStyle = `rgba(255,248,248,${c.a.toFixed(3)})`; ctx.lineWidth = 1 + 1.8 * c.a; path(c); ctx.stroke(); }
+      ctx.lineCap = 'round';
+      // 반짝이 별: 꼬리를 따라 띄엄띄엄
+      ctx.shadowColor = 'rgba(255,40,60,1)'; ctx.shadowBlur = 8;
+      for (const [, b, al] of glow) {
+        if (b.r > 0.3) continue;
+        const k = Math.max(0, Math.sin(now / 60 + b.r * 90)) * Math.min(1, al * 1.4);
+        if (k < 0.1) continue;
+        const sz = 4 + 6 * k, x = b.x + Math.cos(b.r * 99) * 11, y = b.y + Math.sin(b.r * 77) * 11;
+        ctx.fillStyle = `rgba(255,60,80,${k.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(x, y - sz); ctx.quadraticCurveTo(x, y, x + sz, y); ctx.quadraticCurveTo(x, y, x, y + sz);
+        ctx.quadraticCurveTo(x, y, x - sz, y); ctx.quadraticCurveTo(x, y, x, y - sz); ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${k.toFixed(3)})`; ctx.beginPath(); ctx.arc(x, y, 1.2 + k, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+    if (FX.head && FX.head.g) {
+      const f = 0.85 + 0.15 * Math.sin(now / 40);
+      ctx.shadowColor = 'rgba(255,30,50,1)'; ctx.shadowBlur = 18 * f;
+      ctx.fillStyle = '#FF2D3C'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 7 * f, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#FFF8F8'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 3, 0, Math.PI * 2); ctx.fill();
+    } else if (FX.head) {
       ctx.fillStyle = 'rgba(255,45,45,.22)'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 15, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#FF2D2D'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 6, 0, Math.PI * 2); ctx.fill();
     }
@@ -1182,7 +1226,7 @@
     if (byFinger && !fingerDraws()) { startPan(e); return; }
     if (tool === 'laser' || tool === 'laser2') {
       mode = 'act'; act = Object.assign(base, { k: 'laser', life: LASER_LIFE[tool] });
-      FX.trail.push({ x: e.clientX, y: e.clientY, t: performance.now(), l: act.life, gap: true }); FX.head = { x: e.clientX, y: e.clientY }; fxKick();
+      FX.trail.push({ x: e.clientX, y: e.clientY, t: performance.now(), l: act.life, g: tool === 'laser2', r: Math.random(), gap: true }); FX.head = { x: e.clientX, y: e.clientY, g: tool === 'laser2' }; fxKick();
       return;
     }
     const hit = pageAt(e.clientX, e.clientY);
@@ -1289,8 +1333,9 @@
       }
       case 'laser': {
         const now = performance.now();
-        for (const ev of all) FX.trail.push({ x: ev.clientX, y: ev.clientY, t: now, l: act.life });
-        FX.head = { x: e.clientX, y: e.clientY }; fxKick();
+        const g = act.life === LASER_LIFE.laser2;
+        for (const ev of all) FX.trail.push({ x: ev.clientX, y: ev.clientY, t: now, l: act.life, g, r: Math.random() });
+        FX.head = { x: e.clientX, y: e.clientY, g }; fxKick();
         return;
       }
       case 'cover': case 'clip': {
@@ -1849,7 +1894,7 @@
   }
   const TOOL_TIPS = {
     laser: '레이저: 펜으로 가리키면 빨간 꼬리가 잠깐 보였다 사라져요. 필기는 남지 않아요.',
-    laser2: '긴 레이저: 레이저와 같은데 꼬리가 더 오래 남았다 사라져요. 필기는 남지 않아요.',
+    laser2: '긴 레이저: 광선검처럼 빛나는 꼬리가 더 오래 남아 반짝이다 사라져요. 필기는 남지 않아요.',
     cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
     lasso: '올가미: 필기를 빙 둘러 그리거나 톡 눌러 골라요. 끌어서 옮기고, 오른쪽 아래 ●로 크기를 바꿔요.',
