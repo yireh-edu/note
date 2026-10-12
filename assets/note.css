@@ -226,3 +226,7 @@ button{font:inherit; color:inherit}
 .modal .pick-name.picked{animation:pk .5s ease-out}
 @keyframes pk{0%{transform:scale(.85)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
 .modal .pick-info{text-align:center; margin:0}
+/* 쪽 넘김 표시 (가장자리 톡·옆으로 휙) */
+.edge-flash{position:fixed; top:50%; width:52px; height:52px; margin-top:-26px; border-radius:50%; background:rgba(20,28,40,.55); color:#fff; font-size:40px; line-height:46px; text-align:center; pointer-events:none; z-index:20; animation:eflash .6s ease-out forwards}
+.edge-flash.l{left:12px} .edge-flash.r{right:12px}
+@keyframes eflash{0%{opacity:0; transform:scale(.7)}25%{opacity:1; transform:scale(1)}100%{opacity:0}}

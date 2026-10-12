@@ -1188,9 +1188,26 @@
   const touchList = () => [...ptrs.values()].filter(p => p.type === 'touch');
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const isTap = (a, e) => Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 10 && performance.now() - a.t0 < 450;
+  // 쪽 넘기기 몸짓: 옆으로 70px 넘게, 위아래보다 훨씬 옆으로, 0.7초 안에
+  const isSwipe = (dx, dy, t0) => Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5 && performance.now() - t0 < 700;
+  // 화면 왼쪽·오른쪽 끝 띠 (폭의 12%, 최대 90px) → -1 | 1 | 0
+  function edgeAt(x, y) {
+    const r = docEl.getBoundingClientRect();
+    if (y < r.top || y > r.bottom) return 0;
+    const w = Math.min(90, r.width * 0.12);
+    return x < r.left + w ? -1 : x > r.right - w ? 1 : 0;
+  }
+  function turnPage(d) {
+    const i = S.cur + d;
+    if (i < 0 || i >= S.pages.length) { toast(d > 0 ? '마지막 쪽이에요.' : '첫 쪽이에요.', 1200); return; }
+    goPage(i);
+    const f = document.createElement('div');
+    f.className = 'edge-flash ' + (d > 0 ? 'r' : 'l'); f.textContent = d > 0 ? '›' : '‹';
+    viewer.appendChild(f); setTimeout(() => f.remove(), 600);
+  }
   function startPan(e) {
     mode = 'pan'; pan = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), t: performance.now(), vx: 0, vy: 0, moved: 0 };
-    swipe = S.present && S.zoom <= 1.02 ? { x0: e.clientX, y0: e.clientY } : null;
+    swipe = S.zoom <= 1.02 ? { x0: e.clientX, y0: e.clientY, t0: performance.now() } : null;   // 옆으로 휙 → 쪽 넘기기
   }
   function liveOn(pg) {
     const k = inkK(pg);
@@ -1227,7 +1244,7 @@
       if (mode === 'act' && act && act.type === 'touch') cancelAct();
       const [a, b] = touchList();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      mode = 'pinch'; pinch = { d0: Math.max(10, dist(a, b)), z0: S.zoom, a: anchor(mx, my) };
+      mode = 'pinch'; pinch = { d0: Math.max(10, dist(a, b)), z0: S.zoom, a: anchor(mx, my), m0: { x: mx, y: my }, m: { x: mx, y: my }, t0: performance.now() };
       swipe = null;
       return;
     }
@@ -1316,6 +1333,7 @@
     if (mode === 'pinch') {
       const t = touchList(); if (t.length < 2) return;
       const [a, b] = t, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      pinch.m = { x: mx, y: my };
       S.zoom = Math.max(0.5, Math.min(6, pinch.z0 * dist(a, b) / pinch.d0));
       layout(); restore(pinch.a, mx, my);
       updatePageNo();
@@ -1393,17 +1411,27 @@
     ptrs.delete(e.pointerId);
     if (mode === 'guide' && gd) { endGuide(e); return; }
     if (mode === 'pinch') {
-      if (touchList().length < 2) { mode = null; pinch = null; updateVisible(); }
+      if (touchList().length < 2) {
+        // 두 손가락으로 옆으로 휙 (확대는 거의 안 함) → 쪽 넘기기
+        const pc = pinch, dx = pc.m.x - pc.m0.x, dy = pc.m.y - pc.m0.y;
+        mode = null; pinch = null;
+        if (pc.z0 <= 1.02 && Math.abs(S.zoom / pc.z0 - 1) < 0.15 && isSwipe(dx, dy, pc.t0)) {
+          S.zoom = pc.z0; layout(); turnPage(dx < 0 ? 1 : -1); return;
+        }
+        updateVisible();
+      }
       return;
     }
     if (mode === 'pan' && pan && e.pointerId === pan.id) {
       mode = null;
       // 손가락으로 가림막을 톡 → 열기·닫기
       if (isTap(pan, e)) { const hit = pageAt(e.clientX, e.clientY); if (hit && toggleCoverAt(hit.pg, toPt(e, hit.r))) { pan = swipe = null; return; } }
+      // 손가락으로 화면 왼쪽·오른쪽 끝을 톡 → 이전·다음 쪽
+      if (isTap(pan, e)) { const d = edgeAt(e.clientX, e.clientY); if (d) { pan = swipe = null; turnPage(d); return; } }
       if (swipe) {
-        const dx = e.clientX - swipe.x0, dy = e.clientY - swipe.y0;
+        const dx = e.clientX - swipe.x0, dy = e.clientY - swipe.y0, t0 = swipe.t0;
         swipe = null;
-        if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) { goPage(S.cur + (dx < 0 ? 1 : -1)); pan = null; return; }
+        if (isSwipe(dx, dy, t0)) { turnPage(dx < 0 ? 1 : -1); pan = null; return; }
       }
       fling(pan.vx, pan.vy); pan = null;
       updateVisible();
@@ -2743,6 +2771,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, goPage, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
