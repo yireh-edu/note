@@ -273,3 +273,42 @@ button{font:inherit; color:inherit}
 .modal .pp-custom input{width:38px; height:34px; padding:0; border:1px solid var(--line); border-radius:10px; background:none}
 .modal .pp-sizes{display:flex; gap:6px}
 .modal .pp-sizes .tb{border:1px solid var(--line)}
+
+/* 수업 화면 도구 줄 자리: 위(처음)·아래·왼쪽·오른쪽 — 도구 줄만큼 쪽 둘레를 비움 (note.js PB_GAP = 60) */
+.viewer.pb-t .pbar{top:calc(10px + env(safe-area-inset-top)); bottom:auto}
+.viewer.present.pb-t .pages{padding-top:calc(72px + env(safe-area-inset-top))}
+.viewer.present.pb-b .pages{padding-bottom:72px}
+.viewer.present.pb-l .pages{padding-left:72px}
+.viewer.present.pb-r .pages{padding-right:72px}
+.viewer.pb-l .pbar, .viewer.pb-r .pbar{top:50%; bottom:auto; transform:translateY(-50%); flex-direction:column; max-width:none; max-height:calc(100% - 16px); overflow-x:hidden; overflow-y:auto; scrollbar-width:none}
+.viewer.pb-l .pbar::-webkit-scrollbar, .viewer.pb-r .pbar::-webkit-scrollbar{display:none}
+.viewer.pb-l .pbar{left:calc(8px + env(safe-area-inset-left))}
+.viewer.pb-r .pbar{left:auto; right:calc(8px + env(safe-area-inset-right))}
+.viewer.pb-l .pbar .sep, .viewer.pb-r .pbar .sep{width:26px; height:1px; margin:4px 0}
+.viewer.pb-l .pbar .lbl, .viewer.pb-r .pbar .lbl{display:none}
+.viewer.pb-l .pbar .pageno, .viewer.pb-r .pbar .pageno{padding:2px 0; font-size:11.5px}
+.viewer.present.pb-t .timer, .viewer.present.pb-t .replay{top:calc(72px + env(safe-area-inset-top))}
+.presenting:has(.pb-t) .toast, .presenting:has(.pb-l) .toast, .presenting:has(.pb-r) .toast, .presenting:has(.pb-t) .selbar, .presenting:has(.pb-l) .selbar, .presenting:has(.pb-r) .selbar{bottom:calc(18px + env(safe-area-inset-bottom))}
+.modal .pb-pick{display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin:6px 0 10px}
+.modal .pb-pick .btn{flex-direction:column; gap:6px; padding:10px 6px; font-weight:500}
+.modal .pb-pick .btn[aria-pressed="true"], .modal .fol-pick .btn[aria-pressed="true"]{border-color:var(--sel); background:var(--sel-soft); color:var(--ink); font-weight:600}
+.pb-mini{position:relative; width:40px; height:30px; border:1.5px solid currentColor; border-radius:4px; opacity:.8}
+.pb-mini i{position:absolute; background:currentColor; border-radius:2px}
+.pb-t .pb-mini i{left:5px; right:5px; top:3px; height:5px}
+.pb-b .pb-mini i{left:5px; right:5px; bottom:3px; height:5px}
+.pb-l .pb-mini i{top:4px; bottom:4px; left:3px; width:5px}
+.pb-r .pb-mini i{top:4px; bottom:4px; right:3px; width:5px}
+
+/* 따라다니는 그림 (펜 끝) */
+.follow{position:fixed; left:0; top:0; z-index:9; pointer-events:none; will-change:transform; filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))}
+.follow[hidden]{display:none}
+.follow svg{position:absolute; display:block}
+.viewer.folon .doc{cursor:none}
+.modal .fol-pick{display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; margin:6px 0 10px}
+.modal .fol-pick .btn{flex-direction:column; gap:4px; padding:8px 6px; font-weight:500}
+.fol-ic{display:flex; align-items:center; justify-content:center; width:52px; height:52px; border-radius:10px; background:#24493A}
+.fol-ic svg{max-width:46px; max-height:46px; width:auto; height:auto}
+.fol-ic b{color:#fff; font-weight:400}
+
+/* 분필 미리 보기는 칠판 바탕에 */
+.modal .pp-prev.board{background:#24493A; border-color:#24493A}

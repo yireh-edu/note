@@ -49,16 +49,18 @@
 
   // ── 도구 ──
   // 펜 종류: 연필(결이 있는 흐린 선, 누르는 힘 → 진하기) · 볼펜(누르는 힘 → 굵기) · 펜촉(긋는 방향 → 굵기, 만년필처럼) · 형광펜
-  // 선 항목은 k:'pen'|'hl' 그대로 두고 연필·펜촉만 t:'pencil'|'nib'를 붙임 (예전 필기·지우개·올가미가 그대로 동작)
-  const PT_KEYS = ['pencil', 'pen', 'nib', 'hl'];
-  const PTYPES = { pencil: '연필', pen: '볼펜', nib: '펜촉', hl: '형광펜' };
-  const SIZES = { pencil: [0.9, 1.5, 2.4], pen: [1.1, 2, 3.4], nib: [1.8, 3, 4.6], hl: [9, 14, 20] };   // PDF 단위(pt)
+  // 분필: 굵고 거친 결이 있는 선 (칠판 쪽에 쓰기 좋게 흰색·노랑·분홍)
+  // 선 항목은 k:'pen'|'hl' 그대로 두고 연필·펜촉·분필만 t:'pencil'|'nib'|'chalk'를 붙임 (예전 필기·지우개·올가미가 그대로 동작)
+  const PT_KEYS = ['pencil', 'pen', 'nib', 'chalk', 'hl'];
+  const PTYPES = { pencil: '연필', pen: '볼펜', nib: '펜촉', chalk: '분필', hl: '형광펜' };
+  const SIZES = { pencil: [0.9, 1.5, 2.4], pen: [1.1, 2, 3.4], nib: [1.8, 3, 4.6], chalk: [2.2, 3.4, 5.2], hl: [9, 14, 20] };   // PDF 단위(pt)
   const PALETTE = ['#1B2430', '#5B6470', '#9AA3AE', '#FFFFFF', '#D2372A', '#8E2A2A', '#E8730C', '#C9A100', '#1E8A3E', '#7CB518', '#0F8B8D', '#3FA9F5', '#2257C9', '#1F3F8F', '#7A3FC4', '#D63384', '#8E5A2A'];
   const HL_PALETTE = ['#FFD400', '#FFB000', '#FF8FC8', '#FF6B6B', '#7CE07C', '#5ED6C8', '#7FB8FF', '#C79BFF', '#CFCFCF'];
-  const SW0 = { pencil: ['#3A3F47', '#D2372A', '#2257C9'], pen: ['#1B2430', '#D2372A', '#2257C9'], nib: ['#1B2430', '#1F3F8F', '#8E2A2A'], hl: ['#FFD400', '#7CE07C', '#FF8FC8'] };
+  const CHALK_PALETTE = ['#FFFFFF', '#FFF3A3', '#FFE066', '#FFB38A', '#FF8FC8', '#9EE6A0', '#8FD3FF', '#C9B3FF', '#CFCFCF', '#1B2430'];
+  const SW0 = { pencil: ['#3A3F47', '#D2372A', '#2257C9'], pen: ['#1B2430', '#D2372A', '#2257C9'], nib: ['#1B2430', '#1F3F8F', '#8E2A2A'], chalk: ['#FFFFFF', '#FFE066', '#FF8FC8'], hl: ['#FFD400', '#7CE07C', '#FF8FC8'] };
   const OLD_PENS = [['pen', '#1B2430'], ['pen', '#D2372A'], ['pen', '#2257C9'], ['hl', '#FFD400'], ['hl', '#7CE07C']];   // 예전 설정(펜 번호) 옮기기
   const isCol = c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c);
-  const COLOR_NAMES = { '#1B2430': '검정', '#3A3F47': '흑연', '#5B6470': '진회색', '#9AA3AE': '회색', '#FFFFFF': '흰색', '#D2372A': '빨강', '#8E2A2A': '자주', '#E8730C': '주황', '#C9A100': '겨자', '#1E8A3E': '초록', '#7CB518': '연두', '#0F8B8D': '청록', '#3FA9F5': '하늘', '#2257C9': '파랑', '#1F3F8F': '남색', '#7A3FC4': '보라', '#D63384': '분홍', '#8E5A2A': '갈색', '#FFD400': '노랑', '#FFB000': '귤색', '#FF8FC8': '분홍', '#FF6B6B': '다홍', '#7CE07C': '연두', '#5ED6C8': '민트', '#7FB8FF': '하늘', '#C79BFF': '연보라', '#CFCFCF': '회색' };
+  const COLOR_NAMES = { '#1B2430': '검정', '#3A3F47': '흑연', '#5B6470': '진회색', '#9AA3AE': '회색', '#FFFFFF': '흰색', '#D2372A': '빨강', '#8E2A2A': '자주', '#E8730C': '주황', '#C9A100': '겨자', '#1E8A3E': '초록', '#7CB518': '연두', '#0F8B8D': '청록', '#3FA9F5': '하늘', '#2257C9': '파랑', '#1F3F8F': '남색', '#7A3FC4': '보라', '#D63384': '분홍', '#8E5A2A': '갈색', '#FFD400': '노랑', '#FFB000': '귤색', '#FF8FC8': '분홍', '#FF6B6B': '다홍', '#7CE07C': '연두', '#5ED6C8': '민트', '#7FB8FF': '하늘', '#C79BFF': '연보라', '#CFCFCF': '회색', '#FFF3A3': '연노랑', '#FFE066': '노랑', '#FFB38A': '살구', '#9EE6A0': '연두', '#8FD3FF': '하늘', '#C9B3FF': '연보라' };
   const colName = c => COLOR_NAMES[String(c).toUpperCase()] || '고른 색';
   const penLabel = (t, c) => `${PTYPES[t]} ${colName(c)}`;
   const SIZE_NAMES = ['가늘게', '보통', '굵게'];
@@ -67,7 +69,8 @@
   const STAMPS = { o: '동그라미', v: '체크', x: '가위표' };
   const HL_ALPHA = 0.38;
   const FONT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
-  const TOOLS = ['draw', 'erase', 'laser', 'laser2', 'laser3', 'laser4', 'cover', 'text', 'lasso'];
+  const TOOLS = ['draw', 'erase', 'laser', 'laser2', 'laser3', 'laser4', 'point', 'cover', 'text', 'lasso'];
+  const PB_SIDES = { t: '위', b: '아래', l: '왼쪽', r: '오른쪽' };   // 수업 화면 도구 줄 자리
   const A4 = { w: 595.28, h: 841.89 };
   const WRONG = 'wrong:main';   // 오답 노트 (PDF 없이 넣은 쪽만 있는 문서)
   const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1); return w + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? a : b); };
@@ -97,12 +100,14 @@
     finger: set0.finger || 'auto',   // auto(펜을 쓰면 이동) | draw | pan
     eraseMode: set0.eraseMode === 'part' ? 'part' : 'stroke',   // 선 통째로 | 문지른 부분만
     snap: set0.snap !== false,       // 긋고 멈추면 반듯한 도형으로
+    follow: typeof set0.follow === 'string' ? set0.follow : 'none',   // 펜 끝을 따라다니는 그림 (FOLLOW)
+    pb: PB_SIDES[set0.pb] ? set0.pb : 't',   // 수업 화면 도구 줄: 처음엔 위
     stamp: 'o',
     penSeen: !!ls.get(K.pen, false),
     meta: null, pdf: null, pages: [], hist: [], redo: [],
     zoom: 1, scale: 1, cur: 0, present: false, view: 'home',
   };
-  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap });
+  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap, follow: S.follow, pb: S.pb });
   const fingerDraws = () => S.finger === 'draw' || (S.finger === 'auto' && !S.penSeen);
   const isGrade = () => !!(S.meta && S.meta.kind === 'grade');
 
@@ -133,6 +138,8 @@
     qbar: '<svg viewBox="0 0 24 24"><rect x="15" y="3" width="6" height="18" rx="3"/><path d="M3 7h8M3 12h8M3 17h8"/></svg>',
     pencil: '<svg viewBox="0 0 24 24"><path d="M5 19l1.2-4.4L16.4 4.4a1.8 1.8 0 012.6 0l.6.6a1.8 1.8 0 010 2.6L9.4 17.8z"/><path d="M14.6 6.2l3.2 3.2M5 19l4.4-1.2"/></svg>',
     pen: '<svg viewBox="0 0 24 24"><path d="M18.5 3.5l2 2L9 17l-3.2 1.2L7 15z"/><path d="M16.5 5.5l2 2M4 20l1.8-1.8"/></svg>',
+    point: '<svg viewBox="0 0 24 24"><path d="M5 4l6.5 15.5 2.2-6.3 6.3-2.2z"/><path d="M14 14l5 5"/></svg>',
+    chalk: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5l2-5L15 6l3 3-8.5 8.5z"/><path d="M15 6l1.6-1.6a1.4 1.4 0 012 0l1 1a1.4 1.4 0 010 2L18 9M3 21.5h3M8.5 21.5h1"/></svg>',
     nib: '<svg viewBox="0 0 24 24"><path d="M12 21l-5.5-9L12 3l5.5 9z"/><path d="M12 21v-7.5"/><circle cx="12" cy="11.5" r="1.4"/></svg>',
     hl: '<svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-7.5 7.5h-3l-2-2v-3z"/><path d="M7 15l-3 3v2h4l2-2M4 21h16"/></svg>',
     palette: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.2 0 1.8-.8 1.8-1.7 0-1.1-.9-1.4-.9-2.4 0-.9.8-1.6 1.7-1.6H17a4 4 0 004-4c0-4.6-4-8.3-9-8.3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>',
@@ -196,6 +203,7 @@
       <div class="thumbs" id="thumbs" hidden><div class="thumbs-bar"><b>쪽 목록</b><span class="thumbs-hint" id="thumbs-hint"></span><button class="btn ghost" type="button" data-t="edit">쪽 정리</button><button class="btn ghost" type="button" data-t="close">닫기</button></div><div class="thumbs-grid" id="thumbs-grid"></div></div>
       <div class="pbar" id="pbar" role="toolbar" aria-label="수업 화면 도구"></div>
       <canvas class="fx" id="fx" aria-hidden="true"></canvas>
+      <div class="follow" id="follow" aria-hidden="true" hidden></div>
       <div class="qpop" id="qpop" hidden></div>
     </div>
     <div class="modal" id="modal" hidden><div class="card" role="dialog" aria-modal="true" id="modal-card"></div></div>
@@ -442,9 +450,11 @@
   }
 
   // ════════════════ 배치·확대 ════════════════
+  const PB_GAP = 60;   // 수업 화면 도구 줄이 차지하는 폭 (note.css의 .pb-* .pages 여백과 같게)
   function baseScale() {
     const W = docEl.clientWidth, H = docEl.clientHeight;
-    if (S.present) { const pg = S.pages[S.cur]; return Math.max(0.1, Math.min((W - 24) / pg.w, (H - 24) / pg.h)); }
+    // 수업 화면: 도구 줄 자리(위·아래·왼쪽·오른쪽)만큼 비워 두고 꽉 차게
+    if (S.present) { const pg = S.pages[S.cur], side = S.pb === 'l' || S.pb === 'r'; return Math.max(0.1, Math.min((W - 24 - (side ? PB_GAP : 0)) / pg.w, (H - 24 - (side ? 0 : PB_GAP)) / pg.h)); }
     const maxW = Math.max(...S.pages.map(p => p.w));
     return Math.max(0.1, Math.min((W - 24) / maxW, 1100 / maxW));
   }
@@ -554,9 +564,10 @@
     rendering = false;
     if (queue.size && S.view === 'doc') pump(prefer);
   }
-  // 넣은 빈 쪽의 바탕: 백지·줄 노트·모눈·좌표평면·수직선
+  // 넣은 빈 쪽의 바탕: 백지·줄 노트·모눈·좌표평면·수직선·칠판(진한 초록 바탕, 분필로 쓰기)
   // 선 [x0, y0, x1, y1, 색, 굵기] · 숫자 [x, y, 글, 크기, 맞춤(l|c|r), 기준(top|mid)] — 화면과 PDF가 같은 목록으로 그림
-  const PATTERN = { plain: '백지', lines: '줄 노트', grid: '모눈', coord: '좌표평면', numline: '수직선' };
+  const PATTERN = { plain: '백지', lines: '줄 노트', grid: '모눈', coord: '좌표평면', numline: '수직선', board: '칠판' };
+  const PBG = { board: '#24493A' };   // 바탕색 (없으면 흰색)
   const PC = { light: '#DCE3EC', line: '#C5D0DE', axis: '#4A5566' };
   const NUM_FONT = 'Helvetica, Arial, sans-serif';
   const num = String;   // 빼기는 PDF 기본 글꼴에 있는 '-'로
@@ -586,7 +597,7 @@
     return { L, T };
   }
   function paintPattern(ctx, pg, k) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pg.w * k, pg.h * k);
+    ctx.fillStyle = PBG[pg.blank] || '#fff'; ctx.fillRect(0, 0, pg.w * k, pg.h * k);
     const { L, T } = patternSpec(pg);
     ctx.lineCap = 'round';
     for (const [x0, y0, x1, y1, c, w] of L) { ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.5, w * k); ctx.beginPath(); ctx.moveTo(x0 * k, y0 * k); ctx.lineTo(x1 * k, y1 * k); ctx.stroke(); }
@@ -653,9 +664,10 @@
   }
   const widthAt = (s, pr) => s.w * (0.45 + 1.1 * Math.max(0, Math.min(1, pr)));
   // 연필·펜촉·압력 선을 마디로 나눠 굵기(w)·진하기(al)를 정함 (화면과 PDF가 같은 값을 씀)
-  const PENCIL_AL = 0.85;
+  const PENCIL_AL = 0.85, CHALK_AL = 0.92;
+  const rough = s => s.t === 'pencil' || s.t === 'chalk';   // 결이 있어서 마디마다 진하기가 다른 선
   function strokeSegs(s) {
-    const out = [], nib = s.t === 'nib', pencil = s.t === 'pencil';
+    const out = [], nib = s.t === 'nib', pencil = s.t === 'pencil', chalk = s.t === 'chalk';
     let wPrev = null;
     segments(s.p, (a, c, b, pr) => {
       let w, al = 1;
@@ -667,23 +679,25 @@
         if (wPrev != null) w = wPrev * 0.45 + w * 0.55;
         wPrev = w;
       } else if (pencil) { w = s.w * (0.75 + 0.5 * clamp(pr, 0, 1)); al = 0.3 + 0.62 * clamp(pr, 0, 1); }
+      else if (chalk) { w = s.w * (0.85 + 0.3 * clamp(pr, 0, 1)); al = 0.72 + 0.26 * clamp(pr, 0, 1); }
       else w = widthAt(s, pr);
       out.push({ a, c, b, w, al });
     });
     return out;
   }
-  // 연필 결: 색마다 작은 얼룩무늬 한 장을 만들어 두고 선을 그 무늬로 칠함
+  // 연필·분필 결: 색마다 작은 얼룩무늬 한 장을 만들어 두고 선을 그 무늬로 칠함 (분필은 군데군데 비어 거칠게)
   const grainCache = new Map();
-  function grain(ctx, c) {
-    let g = grainCache.get(c);
+  function grain(ctx, c, chalk) {
+    const key = c + (chalk ? '|c' : '');
+    let g = grainCache.get(key);
     if (!g) {
       const cv = document.createElement('canvas'); cv.width = cv.height = 64;
       const x = cv.getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 64, 64);
       const im = x.getImageData(0, 0, 64, 64), d = im.data;
-      let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      for (let i = 3; i < d.length; i += 4) d[i] = 110 + Math.floor(rnd() * 145);
+      let seed = chalk ? 13 : 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let i = 3; i < d.length; i += 4) d[i] = chalk ? (rnd() < 0.2 ? 20 : 150 + Math.floor(rnd() * 105)) : 110 + Math.floor(rnd() * 145);
       x.putImageData(im, 0, 0);
-      g = ctx.createPattern(cv, 'repeat'); grainCache.set(c, g);
+      g = ctx.createPattern(cv, 'repeat'); grainCache.set(key, g);
     }
     return g;
   }
@@ -692,9 +706,10 @@
     const P = s.p, n = P.length;
     if (!n) return;
     ctx.save();
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = s.t === 'pencil' ? grain(ctx, s.c) : s.c;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = rough(s) ? grain(ctx, s.c, s.t === 'chalk') : s.c;
     if (s.k === 'hl') { ctx.globalAlpha = HL_ALPHA; ctx.globalCompositeOperation = 'multiply'; }
     if (s.t === 'pencil') ctx.globalAlpha = PENCIL_AL;
+    if (s.t === 'chalk') ctx.globalAlpha = CHALK_AL;
     if (s.sh) {
       ctx.lineWidth = s.w * k;
       ctx.beginPath(); ctx.moveTo(P[0][0] * k, P[0][1] * k);
@@ -712,11 +727,11 @@
       }
       ctx.stroke();
     } else {
-      // 연필은 마디마다 진하기가 달라서 겹친 끝이 진해지지 않게 납작한 끝으로
-      if (s.t === 'pencil') ctx.lineCap = 'butt';
+      // 연필·분필은 마디마다 진하기가 달라서 겹친 끝이 진해지지 않게 납작한 끝으로
+      if (rough(s)) ctx.lineCap = 'butt';
       for (const g of strokeSegs(s)) {
         ctx.lineWidth = g.w * k;
-        if (s.t === 'pencil') ctx.globalAlpha = g.al;
+        if (rough(s)) ctx.globalAlpha = g.al;
         ctx.beginPath(); ctx.moveTo(g.a[0] * k, g.a[1] * k); ctx.quadraticCurveTo(g.c[0] * k, g.c[1] * k, g.b[0] * k, g.b[1] * k); ctx.stroke();
       }
     }
@@ -1333,6 +1348,7 @@
       FX.head = { x: e.clientX, y: e.clientY, g: true }; fxKick();
       return;
     }
+    if (tool === 'point') { mode = 'act'; act = Object.assign(base, { k: 'point' }); return; }   // 가리키기: 아무것도 안 그림 (따라다니는 그림만)
     if (tool === 'laser' || tool === 'laser2' || tool === 'laser3') {
       // g: 광선검처럼 빛남, st: 반짝이 별까지
       mode = 'act'; act = Object.assign(base, { k: 'laser', life: LASER_LIFE[tool], g: tool !== 'laser', st: tool === 'laser2' });
@@ -1375,7 +1391,7 @@
     }
     const pr = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
     const s = { k: S.pt === 'hl' ? 'hl' : 'pen', c: S.col[S.pt], w: SIZES[S.pt][S.size], p: [[...pt, pr]] };
-    if (S.pt === 'pencil' || S.pt === 'nib') s.t = S.pt;
+    if (S.pt === 'pencil' || S.pt === 'nib' || S.pt === 'chalk') s.t = S.pt;
     if (e.pointerType === 'pen' && S.pt !== 'hl') s.pr = 1;
     act = Object.assign(base, { k: 'draw', pg, s, kk: liveOn(pg), r: hit.r, smooth: pr, hx: e.clientX, hy: e.clientY });
     if (gh && (gh.part === 'edge' || gh.part === 'arc')) {
@@ -1516,6 +1532,7 @@
         if (isTap(a, e)) { const hit = pageAt(e.clientX, e.clientY); if (hit) toggleCoverAt(hit.pg, toPt(e, hit.r)); }
         break;
       }
+      case 'point': act = null; if (isTap(a, e)) { const hit = pageAt(e.clientX, e.clientY); if (hit) toggleCoverAt(hit.pg, toPt(e, hit.r)); } break;
       case 'cover': commitCover(a); break;
       case 'clip': commitClip(a); break;
       case 'text': act = null; if (isTap(a, e)) openText(a.pg, a.pt); break;
@@ -1835,7 +1852,9 @@
     insertPage(at, pg);
     record({ t: 'page', ins: true, at, pg });
     goPage(at);
-    toast(`${at + 1}쪽에 ${josa(PATTERN[kind], '을', '를')} 넣었어요. 보내기·저장한 PDF에도 들어가요.`);
+    // 칠판에는 분필로: 검은 펜은 안 보여서 분필로 바꿔 줌
+    if (kind === 'board' && !(S.tool === 'draw' && S.pt === 'chalk')) { S.pt = 'chalk'; S.tool = 'draw'; saveSettings(); renderTools(); }
+    toast(kind === 'board' ? `${at + 1}쪽에 칠판을 넣었어요. 펜이 분필로 바뀌었어요.` : `${at + 1}쪽에 ${josa(PATTERN[kind], '을', '를')} 넣었어요. 보내기·저장한 PDF에도 들어가요.`);
   }
   // 쪽 정리(옮기기·복사·빼기): 쪽 객체 배열을 통째로 바꿈. 빠진 쪽도 객체는 남아서 되돌리기로 살아남
   function setOrder(arr) {
@@ -1941,7 +1960,7 @@
   function favButton(n) {
     const f = FAV[n], d = [9, 13, 18][f.size], lb = penLabel(f.t, f.c);
     return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pt === f.t && S.col[f.t] === f.c && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${lb} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1}: ${lb} · 길게 누르면 지금 펜 저장">
-      <span class="fv"><span class="dot${f.t === 'hl' ? ' hl' : ''}${f.t === 'pencil' ? ' pc' : ''}" style="background:${f.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
+      <span class="fv"><span class="dot${f.t === 'hl' ? ' hl' : ''}${rough(f) ? ' pc' : ''}" style="background:${f.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
   }
   function stampButtons(showLabel) {
     return Object.entries(STAMPS).map(([k, label]) => `<button class="tb stamp" type="button" data-stamp="${k}" aria-pressed="${S.tool === 'stamp' && S.stamp === k}" aria-label="${label} 도장" title="${label} 도장"><span class="glyph">${{ o: '○', v: '✓', x: '✗' }[k]}</span>${showLabel && k === 'o' ? '<span class="lbl">도장</span>' : ''}</button>`).join('');
@@ -1953,7 +1972,7 @@
     ['fav0', '즐겨찾기 1'], ['fav1', '즐겨찾기 2'], ['fav2', '즐겨찾기 3'],
     ...PT_KEYS.map(t => ['t' + t, PTYPES[t]]), ['sw0', '색 칸 1'], ['sw1', '색 칸 2'], ['sw2', '색 칸 3'], ['penpanel', '펜·색 고르기'],
     ['erase', '지우개'], ['size', '굵기'],
-    ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'],
+    ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'], ['point', '가리키기'],
     ['cover', '가림막'], ['curtain', '커튼'], ['text', '글자'], ['lasso', '올가미'], ['ruler', '자'], ['prot', '각도기'],
     ['undo', '되돌리기'], ['redo', '다시 하기'], ['thumbs', '쪽 목록'], ['timer', '타이머'],
   ];
@@ -1969,10 +1988,10 @@
   const saveQ = () => ls.set(K.qbar, Q);
   function qButton(k) {
     if (/^fav\d$/.test(k)) return favButton(Number(k[3]));
-    if (/^t(pencil|pen|nib|hl)$/.test(k)) return ptButton(k.slice(1), false);
+    if (/^t(pencil|pen|nib|chalk|hl)$/.test(k)) return ptButton(k.slice(1), false);
     if (/^sw\d$/.test(k)) return swButton(Number(k[2]));
     if (k === 'penpanel') return tb('penpanel', I.palette, '펜·색 고르기', null, false);
-    const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', cover: 'cover', text: 'text', lasso: 'lasso' };
+    const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', point: 'point', cover: 'cover', text: 'text', lasso: 'lasso' };
     if (k === 'erase') return tb('erase', I.erase, S.eraseMode === 'part' ? '부분 지우개' : '지우개', S.tool === 'erase', false);
     if (k === 'size') return `<button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${[2, 4, 7][S.size]}px"></span></button>`;
     if (lz[k]) return tb(k, I[k], Q_NAMES[k], S.tool === k, false);
@@ -2008,11 +2027,11 @@
     const slot = () => { const i = S.sw[t].indexOf(S.col[t]); return Number.isInteger(ei) && t === S.pt ? ei : i >= 0 ? i : 2; };
     let at = slot();
     const html = () => {
-      const pal = t === 'hl' ? HL_PALETTE : PALETTE, cur = S.col[t];
+      const pal = t === 'hl' ? HL_PALETTE : t === 'chalk' ? CHALK_PALETTE : PALETTE, cur = S.col[t];
       return `
       <h2>펜·색 고르기</h2>
       <div class="pp-types">${PT_KEYS.map(k => `<button class="tb pt" type="button" data-m="pt" data-v="${k}" aria-pressed="${k === t}">${I[k]}<span class="ptc" style="background:${S.col[k]}"></span><span class="lbl">${PTYPES[k]}</span></button>`).join('')}</div>
-      <canvas class="pp-prev" id="pp-prev" aria-hidden="true"></canvas>
+      <canvas class="pp-prev${t === 'chalk' ? ' board' : ''}" id="pp-prev" aria-hidden="true"></canvas>
       <p class="mh">색 칸 <small>바꿀 칸을 고르고 아래에서 색을 누르세요</small></p>
       <div class="pp-slots">${[0, 1, 2].map(i => `<button class="pp-slot" type="button" data-m="slot" data-v="${i}" aria-pressed="${i === at}" aria-label="${i + 1}번 칸: ${colName(S.sw[t][i])}"><span class="dot${t === 'hl' ? ' hl' : ''}" style="background:${S.sw[t][i]}"></span><small>${i + 1}</small></button>`).join('')}</div>
       <p class="mh">색</p>
@@ -2041,7 +2060,7 @@
       for (let i = 0; i <= 40; i++) { const x = 14 + (W - 28) * i / 40; pts.push([x, H / 2 + Math.sin(i / 40 * Math.PI * 2.2) * 16, 0.25 + 0.7 * Math.sin(i / 40 * Math.PI)]); }
       const st = { k: t === 'hl' ? 'hl' : 'pen', c: S.col[t], w: SIZES[t][S.size] * 1.5, p: pts };
       if (t !== 'hl') st.pr = 1;
-      if (t === 'pencil' || t === 'nib') st.t = t;
+      if (t === 'pencil' || t === 'nib' || t === 'chalk') st.t = t;
       paintStroke(ctx, st, d);
     };
     show();
@@ -2079,6 +2098,7 @@
       ${tb('laser2', I.laser2, '긴 레이저', S.tool === 'laser2')}
       ${tb('laser3', I.laser3, '광선 레이저', S.tool === 'laser3')}
       ${tb('laser4', I.laser4, '한번에 광선', S.tool === 'laser4')}
+      ${tb('point', I.point, '가리키기', S.tool === 'point')}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover')}
       ${tb('curtain', I.curtain, '커튼')}
       ${tb('text', I.text, '글자', S.tool === 'text')}
@@ -2118,6 +2138,7 @@
       ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
       ${tb('laser-x', I[laserKind()], LASER_NAMES[laserKind()] + ' (한 번 더 누르면 다른 레이저)', LASERS.includes(S.tool), false)}
+      ${tb('point', I.point, '가리키기 (한 번 더 누르면 따라다니는 그림 고르기)', S.tool === 'point', false)}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
       ${tb('curtain', I.curtain, '커튼', null, false)}
       ${tb('ruler', I.ruler, '자', !!G.ruler, false)}
@@ -2131,6 +2152,7 @@
       <button class="tb" type="button" data-a="exit-present">${I.close}<span class="lbl">끝내기</span></button>`;
     renderQbar();
     updateUndo(); updatePageNo();
+    folSync();
   }
   function updateUndo() {
     viewer.querySelectorAll('[data-a="undo"]').forEach(b => { b.disabled = !S.hist.length; });
@@ -2144,6 +2166,7 @@
     cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
     lasso: '올가미: 필기를 빙 둘러 그리거나 톡 눌러 골라요. 끌어서 옮기고, 오른쪽 아래 ●로 크기를 바꿔요.',
+    point: '가리키기: 펜을 대고 움직여도 아무것도 안 써지고, 따라다니는 그림만 보여요. 한 번 더 누르면 그림을 골라요.',
     clip: '오답 담기: 틀린 문제를 상자로 둘러요. 오답 노트에 그림으로 들어가요. 다 담았으면 펜을 고르세요.',
   };
   // 수업 화면 아래 줄은 자리가 좁아 레이저 버튼 하나: 한 번 더 누르면 레이저 → 긴 레이저 → 광선 레이저 → 한번에 광선
@@ -2293,6 +2316,7 @@
         const t = LASERS.includes(S.tool) ? LASERS[(LASERS.indexOf(S.tool) + 1) % LASERS.length] : lastLaser;
         setTool(t); break;
       }
+      case 'point': if (S.tool === 'point') openFollow(); else setTool('point'); break;
       case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'cover': case 'text': case 'lasso': setTool(a); break;
       case 'clip': setTool('draw'); break;
       case 'curtain': toggleCurtain(); break;
@@ -2354,6 +2378,8 @@
       <button class="btn ghost wide" type="button" data-m="pick">발표자 뽑기</button>
       <button class="btn ghost wide" type="button" data-m="qbar">빠른 도구 (화면 옆 동그라미): <b>${Q.show ? '보임' : '숨김'}</b></button>
       <button class="btn ghost wide" type="button" data-m="qedit">빠른 도구에 넣을 것 고르기</button>
+      <button class="btn ghost wide" type="button" data-m="follow">따라다니는 그림: <b>${FOLLOW[S.follow].n}</b> <small>(펜 끝에 붙어 다님)</small></button>
+      <button class="btn ghost wide" type="button" data-m="pbside">수업 화면 도구 자리: <b>${PB_SIDES[S.pb]}</b></button>
       <button class="btn ghost wide" type="button" data-m="replay">필기 다시 보기 <small>(${n}쪽, 쓴 순서대로)</small></button>
       <p class="mh">숙제</p>
       ${isGrade() ? '<button class="btn ghost wide" type="button" data-m="score">점수 매기기 <small>(도장 ○ ✓ ✗ 세기)</small></button>' : ''}
@@ -2369,6 +2395,8 @@
       if (m === 'add') { closeModal(); addBlank(b.dataset.v); return; }
       if (m === 'pick') { closeModal(); openPicker(); return; }
       if (m === 'replay') { closeModal(); startReplay(); return; }
+      if (m === 'follow') { closeModal(); openFollow(); return; }
+      if (m === 'pbside') { closeModal(); openPbSide(); return; }
       if (m === 'qbar') { closeModal(); toggleQbar(); return; }
       if (m === 'qedit') { closeModal(); openQbarEdit(); return; }
       if (m === 'score') { closeModal(); openScore(); return; }
@@ -2389,7 +2417,8 @@
   function openText(pg, pt) {
     const item = (() => { for (let j = pg.ink.length - 1; j >= 0; j--) { const s = pg.ink[j]; if (s.k === 'text' && hitItem(s, pt[0], pt[1], 4 / S.scale)) return s; } return null; })();
     let fsI = item ? Math.max(0, TEXT_SIZES.indexOf(item.fs)) : S.size;
-    const color = item ? item.c : S.pt !== 'hl' && S.col[S.pt] !== '#FFFFFF' ? S.col[S.pt] : '#1B2430';
+    const onBoard = pg.blank === 'board';   // 칠판에서는 흰 글자도 그대로
+    const color = item ? item.c : S.pt !== 'hl' && (onBoard || S.col[S.pt] !== '#FFFFFF') ? S.col[S.pt] : onBoard ? '#FFFFFF' : '#1B2430';
     const html = () => `
       <h2>${item ? '글자 고치기' : '글자 넣기'}</h2>
       <textarea id="tx" rows="3" placeholder="여기에 적어요 (줄 바꿈 가능)">${esc(item ? item.t : ($('#tx') ? $('#tx').value : ''))}</textarea>
@@ -2527,6 +2556,75 @@
     layout(); goPage(S.cur);
   }
 
+  // 수업 화면 도구 줄 자리: 위·아래·왼쪽·오른쪽 (viewer에 pb-t|b|l|r)
+  function applyPb() { for (const k of Object.keys(PB_SIDES)) viewer.classList.toggle('pb-' + k, S.pb === k); }
+  applyPb();
+  function openPbSide() {
+    showModal(`
+      <h2>수업 화면 도구 자리</h2>
+      <p>수업 화면에서 도구 줄을 어디에 둘지 고르세요.</p>
+      <div class="pb-pick">${Object.entries(PB_SIDES).map(([k, v]) => `<button class="btn ghost pb-${k}" type="button" data-m="side" data-v="${k}" aria-pressed="${k === S.pb}"><span class="pb-mini"><i></i></span>${v}</button>`).join('')}</div>
+      <div class="row"><button class="btn" type="button" data-m="close">닫기</button></div>`, b => {
+      if (b.dataset.m !== 'side') return;
+      S.pb = b.dataset.v; saveSettings(); applyPb(); closeModal();
+      if (S.present) { layout(); goPage(S.cur); }
+      toast(`수업 화면 도구를 ${josa(PB_SIDES[S.pb], '으로', '로')} 옮겼어요.`);
+    });
+  }
+
+  // ════════════════ 따라다니는 그림 ════════════════
+  // 펜(마우스) 끝에 분필·연필·지시봉·손가락·동그라미가 붙어 다님. [가리키기] 도구는 아무것도 안 쓰고 이 그림만 보여 줌
+  // 펜을 띄운 채 움직여도(애플펜슬·S펜 호버) 따라오고, 손가락은 쓰거나 가리키는 동안만
+  // 막대 모양은 가로로 그린 뒤(끝이 왼쪽 가운데) 45° 돌려 세움. tip: 그림 안에서 펜 끝이 닿는 점
+  const stickSvg = (L, body) => `<svg viewBox="0 0 ${L} ${L}" width="${L}" height="${L}"><g transform="rotate(-45 ${L / 2} ${L / 2})">${body}</g></svg>`;
+  const stickTip = L => { const r = (L / 2 - 4) * Math.SQRT1_2; return [L / 2 - r, L / 2 + r]; };
+  const FOLLOW = {
+    none: { n: '없음' },
+    chalk: { n: '분필', L: 64, svg: stickSvg(64, '<rect x="4" y="26" width="44" height="12" rx="3" fill="#FAFAF2" stroke="#7E8792" stroke-width="1.5"/><rect x="4.8" y="26.8" width="6" height="10.4" rx="2.4" fill="#E4E4D8"/><path d="M20 29h18M24 34h14" stroke="#D9D9CC" stroke-width="1.2"/>') },
+    pencil: { n: '연필', L: 72, svg: stickSvg(72, '<path d="M4 36l15-6h0v12z" fill="#EBC9A0" stroke="#9A7A10" stroke-width="1"/><path d="M4 36l6-2.4v4.8z" fill="#2E3238"/><rect x="19" y="30" width="38" height="12" fill="#F4C430" stroke="#9A7A10" stroke-width="1.2"/><path d="M19 34h38M19 38h38" stroke="#E0AE18" stroke-width="1"/><rect x="57" y="30" width="5" height="12" fill="#C0C4CA" stroke="#80868E" stroke-width="1"/><rect x="62" y="30" width="7" height="12" rx="2.5" fill="#F48FA0" stroke="#B85A6A" stroke-width="1"/>') },
+    stick: { n: '지시봉', L: 120, svg: stickSvg(120, '<path d="M5 60L84 56.5v7z" fill="#B07A45" stroke="#5E3E1E" stroke-width="1"/><rect x="84" y="55" width="32" height="10" rx="4" fill="#5E3E1E"/><circle cx="6" cy="60" r="3.2" fill="#D2372A" stroke="#fff" stroke-width="1"/>') },
+    hand: { n: '손가락', L: 64, tip: [24, 3], svg: '<svg viewBox="0 0 64 64" width="64" height="64"><g fill="#FFD8B5" stroke="#9A6B45" stroke-width="1.6" stroke-linejoin="round"><path d="M19 30V7.5a5 5 0 0110 0V27"/><path d="M29 27a4.5 4.5 0 019 0v2a4.5 4.5 0 019 0v2.5a4.5 4.5 0 019 0V44c0 9-6 16-16 16h-6c-6 0-10-3-13-8l-6-10a4.2 4.2 0 016.5-5.2L19 39V30"/></g><path d="M38 29v4M47 31.5v3.5" stroke="#9A6B45" stroke-width="1.4" stroke-linecap="round"/></svg>' },
+    ring: { n: '동그라미', L: 64, tip: [32, 32], svg: '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="24" fill="rgba(255,212,0,.14)" stroke="#FFC400" stroke-width="4"/><circle cx="32" cy="32" r="24" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1"/></svg>' },
+    dot: { n: '빨간 점', L: 32, tip: [16, 16], svg: '<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="12" fill="rgba(229,57,53,.22)"/><circle cx="16" cy="16" r="6.5" fill="#E53935" stroke="#fff" stroke-width="1.5"/></svg>' },
+  };
+  if (!FOLLOW[S.follow]) S.follow = 'none';
+  const folEl = $('#follow');
+  let folTimer = 0, folKind = '';
+  // 가리키기인데 그림을 '없음'으로 해 두었으면 손가락으로
+  const folShape = () => S.follow !== 'none' ? S.follow : S.tool === 'point' ? 'hand' : 'none';
+  function folSync() { viewer.classList.toggle('folon', folShape() !== 'none'); if (folShape() === 'none') folHide(); }
+  function folHide() { clearTimeout(folTimer); folEl.hidden = true; }
+  function folAt(e, ms) {
+    const k = folShape();
+    if (k === 'none' || S.view !== 'doc') { folHide(); return; }
+    // 손가락: 쓰거나 가리키는 중일 때만 (화면 옮기기·확대할 때는 안 보임)
+    if (e.pointerType === 'touch' && !(mode === 'act' && act && act.id === e.pointerId)) return;
+    if (folKind !== k) {
+      const f = FOLLOW[k], tip = f.tip || stickTip(f.L);
+      folEl.innerHTML = f.svg; folKind = k;
+      Object.assign(folEl.firstChild.style, { left: -tip[0] + 'px', top: -tip[1] + 'px' });
+    }
+    folEl.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+    folEl.hidden = false;
+    clearTimeout(folTimer); folTimer = setTimeout(folHide, ms);
+  }
+  docEl.addEventListener('pointerdown', e => folAt(e, 4000));
+  docEl.addEventListener('pointermove', e => folAt(e, e.buttons || (mode === 'act' && act && act.id === e.pointerId) ? 4000 : 2500));
+  docEl.addEventListener('pointerup', e => { if (!folEl.hidden) { clearTimeout(folTimer); folTimer = setTimeout(folHide, e.pointerType === 'touch' ? 500 : 1500); } });
+  docEl.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch' && !folEl.hidden) { clearTimeout(folTimer); folTimer = setTimeout(folHide, 300); } });
+  function openFollow() {
+    showModal(`
+      <h2>따라다니는 그림</h2>
+      <p>펜 끝에 붙어 다닐 그림을 고르세요. [가리키기]를 고르면 펜을 대도 아무것도 안 써지고 이 그림만 보여요.</p>
+      <div class="fol-pick">${Object.entries(FOLLOW).map(([k, f]) => `<button class="btn ghost" type="button" data-m="fol" data-v="${k}" aria-pressed="${k === S.follow}"><span class="fol-ic">${f.svg || '<b>—</b>'}</span>${f.n}</button>`).join('')}</div>
+      <div class="row"><button class="btn ghost" type="button" data-m="point">${S.tool === 'point' ? '펜으로 돌아가기' : '가리키기로 바꾸기'}</button><button class="btn" type="button" data-m="close">닫기</button></div>`, b => {
+      if (b.dataset.m === 'point') { closeModal(); setTool(S.tool === 'point' ? 'draw' : 'point'); return; }
+      if (b.dataset.m !== 'fol') return;
+      S.follow = b.dataset.v; saveSettings(); folSync(); closeModal();
+      toast(S.follow === 'none' ? (S.tool === 'point' ? '따라다니는 그림을 껐어요. 가리키기 중에는 손가락이 보여요.' : '따라다니는 그림을 껐어요.') : `펜 끝에 ${josa(FOLLOW[S.follow].n, '이', '가')} 따라다녀요.`);
+    });
+  }
+
   // ════════════════ 쪽 목록 ════════════════
   let thumbObs = null, thumbEdit = false;
   function openThumbs() {
@@ -2609,6 +2707,7 @@
         const pg = S.pages[d];
         if (!pg.blank) continue;
         const page = doc.insertPage(d, [pg.w, pg.h]), { L, T } = patternSpec(pg);
+        if (PBG[pg.blank]) page.drawRectangle({ x: 0, y: 0, width: pg.w, height: pg.h, color: hex(PBG[pg.blank]) });
         for (const [x0, y0, x1, y1, c, w] of L) page.drawLine({ start: { x: x0, y: pg.h - y0 }, end: { x: x1, y: pg.h - y1 }, thickness: w, color: hex(c), lineCap: LineCapStyle.Round });
         if (T.length && !font) font = await doc.embedFont(StandardFonts.Helvetica);
         for (const [x, y, t, size, al, base] of T) {
@@ -2639,7 +2738,7 @@
             continue;
           }
           if (s.k !== 'pen' && s.k !== 'hl') continue;
-          const opt = { x: 0, y: 0, borderColor: hex(s.c), borderLineCap: LineCapStyle.Round, borderOpacity: s.k === 'hl' ? HL_ALPHA : s.t === 'pencil' ? PENCIL_AL : 1 };
+          const opt = { x: 0, y: 0, borderColor: hex(s.c), borderLineCap: LineCapStyle.Round, borderOpacity: s.k === 'hl' ? HL_ALPHA : s.t === 'pencil' ? PENCIL_AL : s.t === 'chalk' ? CHALK_AL : 1 };
           const pts = s.p;
           if (s.sh) {
             let dd = `M ${P(pts[0][0], pts[0][1])}`;
@@ -2658,7 +2757,7 @@
           } else {
             for (const g of strokeSegs(s)) {
               const o = Object.assign({}, opt, { borderWidth: g.w });
-              if (s.t === 'pencil') Object.assign(o, { borderOpacity: g.al, borderLineCap: LineCapStyle.Butt });
+              if (rough(s)) Object.assign(o, { borderOpacity: g.al, borderLineCap: LineCapStyle.Butt });
               page.drawSvgPath(`M ${P(g.a[0], g.a[1])} Q ${P(g.c[0], g.c[1])} ${P(g.b[0], g.b[1])}`, o);
             }
           }
