@@ -1304,6 +1304,9 @@
     return k;
   }
 
+  // 아이패드 사파리: pointerdown을 막아도 손가락·펜을 꾹 누르거나 두 번 누르면 글자 선택(→ 필기 영역 전체 선택, [복사·전체 선택] 메뉴)이
+  // 시작될 수 있음. 필기 영역 안은 모두 pointer 이벤트로만 다루니 touchstart 기본 동작을 끔
+  docEl.addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
   docEl.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
@@ -2200,6 +2203,16 @@
     if (t !== 'lasso') clearSel();
     S.tool = t; saveSettings(); renderTools();
   }
+  // 아이패드에서 글자 선택(→ 전체 선택)이 시작되지 않게, 혹시 잡힌 선택은 다음 터치 때 풀기
+  const editable = t => t && t.closest && t.closest('input, textarea, [contenteditable]');
+  document.addEventListener('selectstart', e => {
+    const t = e.target.nodeType === 1 ? e.target : e.target.parentElement;
+    if (!viewer.hidden && !editable(t)) e.preventDefault();
+  });
+  viewer.addEventListener('pointerdown', e => {
+    const sel = window.getSelection && window.getSelection();
+    if (sel && sel.rangeCount && !sel.isCollapsed && !editable(e.target) && !editable(document.activeElement)) sel.removeAllRanges();
+  }, true);
   let favHold = 0, favLong = false;
   viewer.addEventListener('pointerdown', e => {
     const b = e.target.closest('[data-fav]'); if (!b || b.closest('#qbar')) return;   // 빠른 도구 안의 즐겨찾기는 꾹 눌러 끌기

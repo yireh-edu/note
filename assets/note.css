@@ -341,3 +341,6 @@ button{font:inherit; color:inherit}
 .viewer.pb-b .barshow{bottom:calc(8px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%)}
 .viewer.pb-l .barshow{left:calc(8px + env(safe-area-inset-left)); top:50%; transform:translateY(-50%)}
 .viewer.pb-r .barshow{right:calc(8px + env(safe-area-inset-right)); top:50%; transform:translateY(-50%)}
+/* 아이패드: 손가락·펜을 꾹 누르거나 두 번 누를 때 글자 선택·[전체 선택] 메뉴가 뜨지 않게 (입력 칸만 예외) */
+.viewer, .toast, body.presenting{-webkit-user-select:none; user-select:none; -webkit-touch-callout:none}
+.viewer input, .viewer textarea, body.presenting input, body.presenting textarea{-webkit-user-select:text; user-select:text; -webkit-touch-callout:default}
