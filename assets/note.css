@@ -113,6 +113,7 @@ button{font:inherit; color:inherit}
 .pbar{position:absolute; left:50%; bottom:calc(14px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:none; align-items:center; gap:2px; background:var(--bar); border:1px solid var(--line); border-radius:16px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.22); z-index:6; max-width:calc(100% - 16px); overflow-x:auto}
 .viewer.present .pbar{display:flex}
 .pbar .pageno{padding:0 6px}
+.pbar .tb{min-width:36px; padding:0 8px}
 
 @media (max-width:520px){
   .tb .lbl{display:none}
@@ -321,3 +322,22 @@ button{font:inherit; color:inherit}
 /* [따라다니기만] 버튼: 고른 그림을 칠판색 네모에 */
 .tb .fi{flex:none; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:7px; background:#24493A; overflow:hidden}
 .tb .fi svg, .tb .fi img{width:22px !important; height:22px !important; object-fit:contain; fill:none; stroke:none}
+/* 빠른 도구 고르기: 넣은 것 순서 */
+.modal .qorder{list-style:none; margin:4px 0 6px; padding:0; display:grid; gap:4px}
+.modal .qorder li{display:flex; align-items:center; gap:4px; padding:4px 4px 4px 12px; border:1px solid var(--line); border-radius:10px; color:var(--ink); font-size:15px}
+.modal .qorder li span{flex:1; min-width:0}
+.modal .qorder .tb{border-color:var(--line); font-size:15px}
+.modal .qorder .tb:disabled{opacity:.3}
+.modal .qadd{display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 6px}
+.modal .qadd .btn{padding:7px 11px; font-size:14px; font-weight:500}
+/* 도구 줄 숨기기: 보통 화면은 도구 줄만 숨기고 제목 줄은 남김, 수업 화면은 구석에 작은 [도구 줄 보이기] 단추 */
+.viewer.nobar .tools{display:none}
+.viewer.present.nobar .pbar{display:none}
+.viewer.present.nobar.nobar .pages{padding:calc(12px + env(safe-area-inset-top)) 12px 12px}
+.barshow{display:none; position:absolute; z-index:6; width:40px; height:40px; padding:0; align-items:center; justify-content:center; border-radius:50%; border:1px solid var(--line); background:var(--bar); color:var(--ink); box-shadow:0 4px 14px rgba(0,0,0,.18); cursor:pointer; opacity:.75; touch-action:manipulation}
+.barshow svg{width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.viewer.present.nobar .barshow{display:flex}
+.viewer.pb-t .barshow{top:calc(8px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%)}
+.viewer.pb-b .barshow{bottom:calc(8px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%)}
+.viewer.pb-l .barshow{left:calc(8px + env(safe-area-inset-left)); top:50%; transform:translateY(-50%)}
+.viewer.pb-r .barshow{right:calc(8px + env(safe-area-inset-right)); top:50%; transform:translateY(-50%)}
