@@ -302,7 +302,7 @@ button{font:inherit; color:inherit}
 /* 따라다니는 그림 (펜 끝) */
 .follow{position:fixed; left:0; top:0; z-index:9; pointer-events:none; will-change:transform; filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))}
 .follow[hidden]{display:none}
-.follow svg{position:absolute; display:block}
+.follow > *{position:absolute; display:block; -webkit-user-drag:none}
 .viewer.folon .doc{cursor:none}
 .modal .fol-pick{display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; margin:6px 0 10px}
 .modal .fol-pick .btn{flex-direction:column; gap:4px; padding:8px 6px; font-weight:500}
@@ -312,3 +312,12 @@ button{font:inherit; color:inherit}
 
 /* 분필 미리 보기는 칠판 바탕에 */
 .modal .pp-prev.board{background:#24493A; border-color:#24493A}
+.fol-ic img{max-width:46px; max-height:46px; width:auto; height:auto}
+/* 내 그림: 펜 끝 자리 고르기 (바둑판 = 투명한 곳) */
+.modal .fol-tip{display:flex; justify-content:center; margin:6px 0 4px}
+.fol-tipbox{position:relative; display:inline-block; touch-action:none; cursor:crosshair; border-radius:8px; background:repeating-conic-gradient(#E3E8EF 0 25%, #fff 0 50%) 0 0/16px 16px; box-shadow:0 0 0 1px var(--line)}
+.fol-tipbox img{display:block; max-width:min(100%, 260px); max-height:220px; min-width:120px; pointer-events:none}
+.fol-tipbox i{position:absolute; width:22px; height:22px; margin:-11px 0 0 -11px; pointer-events:none; background:linear-gradient(#E53935, #E53935) center/2px 100% no-repeat, linear-gradient(#E53935, #E53935) center/100% 2px no-repeat}
+/* [따라다니기만] 버튼: 고른 그림을 칠판색 네모에 */
+.tb .fi{flex:none; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:7px; background:#24493A; overflow:hidden}
+.tb .fi svg, .tb .fi img{width:22px !important; height:22px !important; object-fit:contain; fill:none; stroke:none}

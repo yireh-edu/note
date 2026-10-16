@@ -23,7 +23,7 @@
     get(k, f) { try { const v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
-  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', qbar: 'irae-note-qbar', roster: 'irae-note-roster', grades: 'irae-note-grades' };
+  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', qbar: 'irae-note-qbar', roster: 'irae-note-roster', grades: 'irae-note-grades', folImg: 'irae-note-follow-img' };
   // 문서 정보(meta), PDF 원본(pdf), 필기(ink)를 따로 둬서 목록을 볼 때 큰 PDF를 읽지 않음
   const DB = (() => {
     let opening;
@@ -210,7 +210,8 @@
     <div class="toast" id="toast" role="status" hidden></div>
     <input type="file" id="file-in" accept="application/pdf,.pdf" hidden>
     <input type="file" id="bk-in" accept=".json,application/json" hidden>
-    <input type="file" id="img-in" accept="image/*" hidden>`;
+    <input type="file" id="img-in" accept="image/*" hidden>
+    <input type="file" id="fol-in" accept="image/*" hidden>`;
   const home = $('#home'), viewer = $('#viewer'), docEl = $('#doc'), pagesEl = $('#pages');
   let toastTimer;
   function toast(text, ms = 2600) {
@@ -1348,7 +1349,7 @@
       FX.head = { x: e.clientX, y: e.clientY, g: true }; fxKick();
       return;
     }
-    if (tool === 'point') { mode = 'act'; act = Object.assign(base, { k: 'point' }); return; }   // 가리키기: 아무것도 안 그림 (따라다니는 그림만)
+    if (tool === 'point') { mode = 'act'; act = Object.assign(base, { k: 'point' }); return; }   // 따라다니기만: 아무것도 안 그림 (따라다니는 그림만)
     if (tool === 'laser' || tool === 'laser2' || tool === 'laser3') {
       // g: 광선검처럼 빛남, st: 반짝이 별까지
       mode = 'act'; act = Object.assign(base, { k: 'laser', life: LASER_LIFE[tool], g: tool !== 'laser', st: tool === 'laser2' });
@@ -1972,7 +1973,7 @@
     ['fav0', '즐겨찾기 1'], ['fav1', '즐겨찾기 2'], ['fav2', '즐겨찾기 3'],
     ...PT_KEYS.map(t => ['t' + t, PTYPES[t]]), ['sw0', '색 칸 1'], ['sw1', '색 칸 2'], ['sw2', '색 칸 3'], ['penpanel', '펜·색 고르기'],
     ['erase', '지우개'], ['size', '굵기'],
-    ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'], ['point', '가리키기'],
+    ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'], ['point', '따라다니기만'],
     ['cover', '가림막'], ['curtain', '커튼'], ['text', '글자'], ['lasso', '올가미'], ['ruler', '자'], ['prot', '각도기'],
     ['undo', '되돌리기'], ['redo', '다시 하기'], ['thumbs', '쪽 목록'], ['timer', '타이머'],
   ];
@@ -1991,7 +1992,8 @@
     if (/^t(pencil|pen|nib|chalk|hl)$/.test(k)) return ptButton(k.slice(1), false);
     if (/^sw\d$/.test(k)) return swButton(Number(k[2]));
     if (k === 'penpanel') return tb('penpanel', I.palette, '펜·색 고르기', null, false);
-    const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', point: 'point', cover: 'cover', text: 'text', lasso: 'lasso' };
+    if (k === 'point') return tb('point', pointIcon(), Q_NAMES[k], S.tool === 'point', false);
+    const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', cover: 'cover', text: 'text', lasso: 'lasso' };
     if (k === 'erase') return tb('erase', I.erase, S.eraseMode === 'part' ? '부분 지우개' : '지우개', S.tool === 'erase', false);
     if (k === 'size') return `<button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${[2, 4, 7][S.size]}px"></span></button>`;
     if (lz[k]) return tb(k, I[k], Q_NAMES[k], S.tool === k, false);
@@ -2098,7 +2100,7 @@
       ${tb('laser2', I.laser2, '긴 레이저', S.tool === 'laser2')}
       ${tb('laser3', I.laser3, '광선 레이저', S.tool === 'laser3')}
       ${tb('laser4', I.laser4, '한번에 광선', S.tool === 'laser4')}
-      ${tb('point', I.point, '가리키기', S.tool === 'point')}
+      ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point')}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover')}
       ${tb('curtain', I.curtain, '커튼')}
       ${tb('text', I.text, '글자', S.tool === 'text')}
@@ -2138,7 +2140,7 @@
       ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
       ${tb('laser-x', I[laserKind()], LASER_NAMES[laserKind()] + ' (한 번 더 누르면 다른 레이저)', LASERS.includes(S.tool), false)}
-      ${tb('point', I.point, '가리키기 (한 번 더 누르면 따라다니는 그림 고르기)', S.tool === 'point', false)}
+      ${tb('point', pointIcon(), '따라다니기만 (한 번 더 누르면 그림 고르기)', S.tool === 'point', false)}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
       ${tb('curtain', I.curtain, '커튼', null, false)}
       ${tb('ruler', I.ruler, '자', !!G.ruler, false)}
@@ -2166,7 +2168,7 @@
     cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
     lasso: '올가미: 필기를 빙 둘러 그리거나 톡 눌러 골라요. 끌어서 옮기고, 오른쪽 아래 ●로 크기를 바꿔요.',
-    point: '가리키기: 펜을 대고 움직여도 아무것도 안 써지고, 따라다니는 그림만 보여요. 한 번 더 누르면 그림을 골라요.',
+    point: '따라다니기만: 펜을 대고 움직여도 아무것도 안 써지고, 펜 끝에 그림만 따라다녀요. 한 번 더 누르면 그림을 골라요. 다시 쓰려면 펜을 누르세요.',
     clip: '오답 담기: 틀린 문제를 상자로 둘러요. 오답 노트에 그림으로 들어가요. 다 담았으면 펜을 고르세요.',
   };
   // 수업 화면 아래 줄은 자리가 좁아 레이저 버튼 하나: 한 번 더 누르면 레이저 → 긴 레이저 → 광선 레이저 → 한번에 광선
@@ -2573,11 +2575,11 @@
   }
 
   // ════════════════ 따라다니는 그림 ════════════════
-  // 펜(마우스) 끝에 분필·연필·지시봉·손가락·동그라미가 붙어 다님. [가리키기] 도구는 아무것도 안 쓰고 이 그림만 보여 줌
+  // 펜(마우스) 끝에 분필·연필·지시봉·손가락·동그라미가 붙어 다님. [따라다니기만] 도구는 아무것도 안 쓰고 이 그림만 보여 줌
   // 펜을 띄운 채 움직여도(애플펜슬·S펜 호버) 따라오고, 손가락은 쓰거나 가리키는 동안만
-  // 막대 모양은 가로로 그린 뒤(끝이 왼쪽 가운데) 45° 돌려 세움. tip: 그림 안에서 펜 끝이 닿는 점
-  const stickSvg = (L, body) => `<svg viewBox="0 0 ${L} ${L}" width="${L}" height="${L}"><g transform="rotate(-45 ${L / 2} ${L / 2})">${body}</g></svg>`;
-  const stickTip = L => { const r = (L / 2 - 4) * Math.SQRT1_2; return [L / 2 - r, L / 2 + r]; };
+  // 막대 모양은 가로로 그린 뒤(끝이 왼쪽 가운데) 45° 돌려 끝은 왼쪽 위, 몸통은 4시 방향(손에 쥔 펜처럼). tip: 그림 안에서 펜 끝이 닿는 점
+  const stickSvg = (L, body) => `<svg viewBox="0 0 ${L} ${L}" width="${L}" height="${L}"><g transform="rotate(45 ${L / 2} ${L / 2})">${body}</g></svg>`;
+  const stickTip = L => { const r = (L / 2 - 4) * Math.SQRT1_2; return [L / 2 - r, L / 2 - r]; };
   const FOLLOW = {
     none: { n: '없음' },
     chalk: { n: '분필', L: 64, svg: stickSvg(64, '<rect x="4" y="26" width="44" height="12" rx="3" fill="#FAFAF2" stroke="#7E8792" stroke-width="1.5"/><rect x="4.8" y="26.8" width="6" height="10.4" rx="2.4" fill="#E4E4D8"/><path d="M20 29h18M24 34h14" stroke="#D9D9CC" stroke-width="1.2"/>') },
@@ -2587,11 +2589,22 @@
     ring: { n: '동그라미', L: 64, tip: [32, 32], svg: '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="24" fill="rgba(255,212,0,.14)" stroke="#FFC400" stroke-width="4"/><circle cx="32" cy="32" r="24" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1"/></svg>' },
     dot: { n: '빨간 점', L: 32, tip: [16, 16], svg: '<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="12" fill="rgba(229,57,53,.22)"/><circle cx="16" cy="16" r="6.5" fill="#E53935" stroke="#fff" stroke-width="1.5"/></svg>' },
   };
-  if (!FOLLOW[S.follow]) S.follow = 'none';
+  // 내 그림: 올린 그림(가장 긴 쪽 160px PNG)과 펜 끝 자리(fx, fy: 그림 안 비율), 크기(sz: 가장 긴 쪽 px)
+  const FOL_SZ = { 56: '작게', 88: '보통', 128: '크게' };
+  let MINE = (m => m && /^data:image\/png;base64,/.test(m.src) && m.w > 0 && m.h > 0 && FOL_SZ[m.sz] ? m : null)(ls.get(K.folImg, null));
+  function mineDef() {
+    if (!MINE) return null;
+    const k = MINE.sz / Math.max(MINE.w, MINE.h), w = Math.round(MINE.w * k), h = Math.round(MINE.h * k);
+    return { n: '내 그림', tip: [MINE.fx * w, MINE.fy * h], svg: `<img src="${MINE.src}" width="${w}" height="${h}" alt="" draggable="false">` };
+  }
+  const folDef = k => k === 'mine' ? mineDef() : FOLLOW[k];
+  if (!folDef(S.follow)) S.follow = 'none';
   const folEl = $('#follow');
   let folTimer = 0, folKind = '';
-  // 가리키기인데 그림을 '없음'으로 해 두었으면 손가락으로
+  // 따라다니기만인데 그림을 '없음'으로 해 두었으면 손가락으로
   const folShape = () => S.follow !== 'none' ? S.follow : S.tool === 'point' ? 'hand' : 'none';
+  // [따라다니기만] 버튼 아이콘: 지금 따라다닐 그림을 칠판색 네모 안에
+  const pointIcon = () => { const f = folDef(S.follow !== 'none' ? S.follow : 'hand'); return `<span class="fi">${f.svg}</span>`; };
   function folSync() { viewer.classList.toggle('folon', folShape() !== 'none'); if (folShape() === 'none') folHide(); }
   function folHide() { clearTimeout(folTimer); folEl.hidden = true; }
   function folAt(e, ms) {
@@ -2600,7 +2613,7 @@
     // 손가락: 쓰거나 가리키는 중일 때만 (화면 옮기기·확대할 때는 안 보임)
     if (e.pointerType === 'touch' && !(mode === 'act' && act && act.id === e.pointerId)) return;
     if (folKind !== k) {
-      const f = FOLLOW[k], tip = f.tip || stickTip(f.L);
+      const f = folDef(k), tip = f.tip || stickTip(f.L);
       folEl.innerHTML = f.svg; folKind = k;
       Object.assign(folEl.firstChild.style, { left: -tip[0] + 'px', top: -tip[1] + 'px' });
     }
@@ -2613,16 +2626,64 @@
   docEl.addEventListener('pointerup', e => { if (!folEl.hidden) { clearTimeout(folTimer); folTimer = setTimeout(folHide, e.pointerType === 'touch' ? 500 : 1500); } });
   docEl.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch' && !folEl.hidden) { clearTimeout(folTimer); folTimer = setTimeout(folHide, 300); } });
   function openFollow() {
+    const list = Object.entries(FOLLOW);
+    if (MINE) list.push(['mine', mineDef()]);
     showModal(`
       <h2>따라다니는 그림</h2>
-      <p>펜 끝에 붙어 다닐 그림을 고르세요. [가리키기]를 고르면 펜을 대도 아무것도 안 써지고 이 그림만 보여요.</p>
-      <div class="fol-pick">${Object.entries(FOLLOW).map(([k, f]) => `<button class="btn ghost" type="button" data-m="fol" data-v="${k}" aria-pressed="${k === S.follow}"><span class="fol-ic">${f.svg || '<b>—</b>'}</span>${f.n}</button>`).join('')}</div>
-      <div class="row"><button class="btn ghost" type="button" data-m="point">${S.tool === 'point' ? '펜으로 돌아가기' : '가리키기로 바꾸기'}</button><button class="btn" type="button" data-m="close">닫기</button></div>`, b => {
-      if (b.dataset.m === 'point') { closeModal(); setTool(S.tool === 'point' ? 'draw' : 'point'); return; }
-      if (b.dataset.m !== 'fol') return;
-      S.follow = b.dataset.v; saveSettings(); folSync(); closeModal();
-      toast(S.follow === 'none' ? (S.tool === 'point' ? '따라다니는 그림을 껐어요. 가리키기 중에는 손가락이 보여요.' : '따라다니는 그림을 껐어요.') : `펜 끝에 ${josa(FOLLOW[S.follow].n, '이', '가')} 따라다녀요.`);
+      <p>펜 끝에 붙어 다닐 그림을 고르세요. 선은 안 쓰고 그림만 따라다니게 하려면 아래 [따라다니기만]을 누르세요.</p>
+      <div class="fol-pick">${list.map(([k, f]) => `<button class="btn ghost" type="button" data-m="fol" data-v="${k}" aria-pressed="${k === S.follow}"><span class="fol-ic">${f.svg || '<b>—</b>'}</span>${f.n}</button>`).join('')}</div>
+      <button class="btn ghost wide" type="button" data-m="up">${MINE ? '내 그림 바꾸기 <small>(사진·그림 올리기)</small>' : '내 그림 올리기 <small>(사진·그림 파일)</small>'}</button>
+      ${MINE ? '<button class="btn ghost wide" type="button" data-m="tip">내 그림의 펜 끝 자리·크기 고치기</button>' : ''}
+      <div class="row"><button class="btn ghost" type="button" data-m="point">${S.tool === 'point' ? '펜으로 돌아가기 (쓰기)' : '따라다니기만 (안 쓰고 그림만)'}</button><button class="btn" type="button" data-m="close">닫기</button></div>`, b => {
+      const m = b.dataset.m;
+      if (m === 'point') { closeModal(); setTool(S.tool === 'point' ? 'draw' : 'point'); return; }
+      if (m === 'up') { closeModal(); $('#fol-in').click(); return; }
+      if (m === 'tip') { closeModal(); openFolTip(Object.assign({}, MINE)); return; }
+      if (m === 'fol') useFollow(b.dataset.v);
     });
+  }
+  function useFollow(k) {
+    S.follow = k; saveSettings(); folKind = ''; closeModal(); renderTools();
+    toast(k === 'none' ? (S.tool === 'point' ? '따라다니는 그림을 껐어요. 따라다니기만 중에는 손가락이 보여요.' : '따라다니는 그림을 껐어요.') : `펜 끝에 ${josa(folDef(k).n, '이', '가')} 따라다녀요.`);
+  }
+  // 그림 올리기: 가장 긴 쪽 160px로 줄여 PNG(투명 바탕 그대로)로 저장 → 펜 끝 자리 고르기
+  $('#fol-in').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    try {
+      const url = URL.createObjectURL(f), im = new Image();
+      await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; });
+      const k = Math.min(1, 160 / Math.max(im.naturalWidth, im.naturalHeight)), w = Math.max(1, Math.round(im.naturalWidth * k)), h = Math.max(1, Math.round(im.naturalHeight * k));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(im, 0, 0, w, h); URL.revokeObjectURL(url);
+      openFolTip({ src: c.toDataURL('image/png'), w, h, fx: 0, fy: 0, sz: 88 });
+    } catch (err) { toast('그림을 읽지 못했어요. 사진(JPG·PNG) 파일을 골라 주세요.'); }
+  });
+  // 펜 끝 자리: 그림을 눌러 빨간 십자로 고름. 크기는 작게·보통·크게
+  function openFolTip(m) {
+    const html = () => `
+      <h2>펜 끝 자리 고르기</h2>
+      <p>그림에서 <b>펜 끝이 닿을 곳</b>을 누르세요. 빨간 십자가 펜 끝이에요.</p>
+      <div class="fol-tip"><span class="fol-tipbox" id="fol-tipbox"><img src="${m.src}" alt="" draggable="false"><i style="left:${m.fx * 100}%;top:${m.fy * 100}%"></i></span></div>
+      <div class="seg">${Object.entries(FOL_SZ).map(([v, n]) => `<button class="tb" type="button" data-m="sz" data-v="${v}" aria-pressed="${Number(v) === m.sz}">${n}</button>`).join('')}</div>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">저장</button></div>`;
+    const bind = () => {
+      const box = $('#fol-tipbox');
+      box.addEventListener('pointerdown', e => {
+        const r = box.getBoundingClientRect();
+        m.fx = clamp((e.clientX - r.left) / r.width, 0, 1); m.fy = clamp((e.clientY - r.top) / r.height, 0, 1);
+        Object.assign(box.querySelector('i').style, { left: m.fx * 100 + '%', top: m.fy * 100 + '%' });
+      });
+    };
+    const fn = b => {
+      if (b.dataset.m === 'sz') { m.sz = Number(b.dataset.v); showModal(html(), fn); bind(); return; }
+      if (b.dataset.m !== 'ok') return;
+      MINE = m; ls.set(K.folImg, m);
+      const saved = JSON.stringify(ls.get(K.folImg, null)) === JSON.stringify(m);
+      useFollow('mine');
+      if (!saved) toast('그림을 기기에 저장하지 못했어요. 앱을 다시 열면 빠져요.', 3600);
+    };
+    showModal(html(), fn); bind();
   }
 
   // ════════════════ 쪽 목록 ════════════════
