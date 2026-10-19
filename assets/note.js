@@ -748,16 +748,42 @@
         ctx.lineTo(P[n - 1][0] * k, P[n - 1][1] * k);
       }
       ctx.stroke();
-    } else {
-      // 연필·분필은 마디마다 진하기가 달라서 겹친 끝이 진해지지 않게 납작한 끝으로
-      if (rough(s)) ctx.lineCap = 'butt';
-      for (const g of strokeSegs(s)) {
-        ctx.lineWidth = g.w * k;
-        if (rough(s)) ctx.globalAlpha = g.al;
-        ctx.beginPath(); ctx.moveTo(g.a[0] * k, g.a[1] * k); ctx.quadraticCurveTo(g.c[0] * k, g.c[1] * k, g.b[0] * k, g.b[1] * k); ctx.stroke();
-      }
-    }
+    } else paintSegs(ctx, s, k, strokeSegs(s), 0);
     ctx.restore();
+  }
+  // 마디마다 굵기·진하기가 다른 선 (압력 펜·펜촉·연필·분필)
+  const segMode = s => !s.sh && !(s.k === 'hl' || (!s.pr && s.t !== 'nib') || s.p.length < 3);
+  function paintSegs(ctx, s, k, segs, from, to = segs.length) {
+    // 연필·분필은 마디마다 진하기가 달라서 겹친 끝이 진해지지 않게 납작한 끝으로.
+    // 굵기·진하기가 거의 같은 마디는 한 줄로 이어 한 번에 칠함 (마디마다 칠하면 오래된 아이패드에서 아주 느림)
+    const r = rough(s);
+    if (r) { ctx.lineCap = 'butt'; ctx.lineJoin = 'round'; }
+    const key = g => r ? Math.round(g.w / s.w * 12) * 100 + Math.round(g.al * 25) : g.w;
+    for (let i = from; i < to;) {
+      const g0 = segs[i], kk = key(g0);
+      ctx.lineWidth = g0.w * k;
+      if (r) ctx.globalAlpha = g0.al;
+      ctx.beginPath(); ctx.moveTo(g0.a[0] * k, g0.a[1] * k);
+      let j = i;
+      do { const g = segs[j]; ctx.quadraticCurveTo(g.c[0] * k, g.c[1] * k, g.b[0] * k, g.b[1] * k); j++; } while (r && j < to && j - i < 64 && key(segs[j]) === kk);
+      ctx.stroke();
+      i = j;
+    }
+  }
+  // 쓰는 중인 선: 마디 선은 새로 생긴(이제 안 바뀌는) 마디만 덧그림. 매번 지우고 처음부터 그리면 긴 선일수록 느려짐
+  function paintLiveStroke(ctx, a) {
+    const s = a.s;
+    if (!segMode(s)) { a.liveN = -1; ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height); paintStroke(ctx, s, a.kk); return; }
+    if (!(a.liveN >= 0)) { ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height); a.liveN = 0; }
+    const segs = strokeSegs(s), to = segs.length - 1;   // 마지막 마디는 끝점이 계속 바뀌므로 아직 안 그림
+    if (to <= a.liveN) return;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = rough(s) ? grain(ctx, s.c, s.t === 'chalk') : s.c;
+    if (s.t === 'pencil') ctx.globalAlpha = PENCIL_AL;
+    if (s.t === 'chalk') ctx.globalAlpha = CHALK_AL;
+    paintSegs(ctx, s, a.kk, segs, a.liveN, to);
+    ctx.restore();
+    a.liveN = to;
   }
   // 압력 선의 마디: (앞 중점) → 점 i(조절점) → (뒤 중점)
   function segments(P, fn) {
@@ -1479,7 +1505,8 @@
           const raw = act.type === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5;
           act.smooth = act.smooth * 0.6 + raw * 0.4;
           const pt = toPt(ev, act.r), last = act.s.p[act.s.p.length - 1];
-          if (Math.abs(pt[0] - last[0]) + Math.abs(pt[1] - last[1]) < 0.25) continue;
+          // 화면에서 1px도 안 움직인 점은 버림 (애플펜슬은 1초에 240번 알려 줘서 점이 너무 많아짐)
+          if (Math.abs(pt[0] - last[0]) + Math.abs(pt[1] - last[1]) < Math.max(0.25, 1 / S.scale)) continue;
           act.s.p.push([pt[0], pt[1], act.smooth]);
         }
         if (Math.hypot(e.clientX - act.hx, e.clientY - act.hy) > 4) { act.hx = e.clientX; act.hy = e.clientY; holdArm(); }
@@ -1646,9 +1673,9 @@
   function paintLive() {
     if (!act) return;
     const ctx = liveCanvas.getContext('2d');
+    if (act.k === 'draw') { paintLiveStroke(ctx, act); return; }
     ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
-    if (act.k === 'draw') paintStroke(ctx, act.s, act.kk);
-    else if (act.k === 'lasso') {
+    if (act.k === 'lasso') {
       const k = act.kk, d = DPR();
       ctx.save(); ctx.strokeStyle = '#2B4C8C'; ctx.lineWidth = 1.5 * d; ctx.setLineDash([6 * d, 4 * d]);
       ctx.beginPath(); act.pts.forEach((q, n) => n ? ctx.lineTo(q[0] * k, q[1] * k) : ctx.moveTo(q[0] * k, q[1] * k)); ctx.stroke(); ctx.restore();
@@ -3368,6 +3395,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, ptrs, goPage, FAV, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, ptrs, paintItem, goPage, FAV, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
