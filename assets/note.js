@@ -23,7 +23,7 @@
     get(k, f) { try { const v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
-  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', qbar: 'irae-note-qbar', roster: 'irae-note-roster', grades: 'irae-note-grades', folImg: 'irae-note-follow-img' };
+  const K = { name: 'irae-note-name', set: 'irae-note-settings', pen: 'irae-note-pen-seen', fav: 'irae-note-fav', qbar: 'irae-note-qbar', roster: 'irae-note-roster', grades: 'irae-note-grades', folImg: 'irae-note-follow-img', err: 'irae-note-errlog' };
   // 문서 정보(meta), PDF 원본(pdf), 필기(ink)를 따로 둬서 목록을 볼 때 큰 PDF를 읽지 않음
   const DB = (() => {
     let opening;
@@ -221,6 +221,20 @@
     const t = $('#toast'); t.textContent = text; t.hidden = false;
     clearTimeout(toastTimer); if (ms) toastTimer = setTimeout(() => { t.hidden = true; }, ms);
   }
+
+  // ── 뜻밖의 오류: 기록해 두고(더보기 → 문제 기록), 누르던 상태를 풀어서 계속 쓸 수 있게 ──
+  let errToastAt = 0;
+  function onAppError(msg, stack) {
+    try {
+      const log = ls.get(K.err, []);
+      log.push({ at: new Date().toISOString(), msg: String(msg).slice(0, 300), stack: String(stack || '').slice(0, 900), ua: navigator.userAgent, ver: CFG.version || '' });
+      ls.set(K.err, log.slice(-20));
+    } catch (x) {}
+    try { resetInput(); } catch (x) {}
+    if (Date.now() - errToastAt > 15000) { errToastAt = Date.now(); toast('문제가 하나 생겨서 하던 동작을 멈췄어요. 계속 이상하면 [더보기 → 문제 기록]을 선생님께 보내 주세요.', 5000); }
+  }
+  window.addEventListener('error', e => { if (e.message && !/ResizeObserver/.test(e.message)) onAppError(e.message, e.error && e.error.stack); });
+  window.addEventListener('unhandledrejection', e => { const r = e.reason; onAppError(r && r.message || r, r && r.stack); });
 
   // ── 창(모달): 내용과 버튼 처리 함수를 함께 넘김 ──
   // onClose: 창이 닫힐 때(닫기·바깥 누름·처리 끝) 한 번 부름
@@ -524,7 +538,7 @@
     // 멀리 있는 쪽은 그림을 비워 메모리를 아낌
     S.pages.forEach((pg, i) => {
       if (keep.has(i)) return;
-      if (Math.abs(i - (vis[0] ?? S.cur)) > 3 && pg.pdfScale) {
+      if (Math.abs(i - (vis[0] ?? S.cur)) > 2 && pg.pdfScale) {
         const c = pg.el.querySelector('.pdfc'), k = pg.el.querySelector('.inkc');
         c.width = c.height = 0; k.width = k.height = 0; pg.pdfScale = 0; pg.inkScale = 0; pg.el.classList.add('loading');
       }
@@ -1248,7 +1262,7 @@
     if (!RP) return;
     const pg = RP.pg;
     if (RP.raf) cancelAnimationFrame(RP.raf);
-    RP = null; liveCanvas.remove();
+    RP = null; liveOff();
     $('#replay').hidden = true;
     if (pg.el && S.pages.includes(pg)) drawPg(pg);
   }
@@ -1296,6 +1310,7 @@
     mode = 'pan'; pan = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), t: performance.now(), vx: 0, vy: 0, moved: 0 };
     swipe = S.zoom <= 1.02 ? { x0: e.clientX, y0: e.clientY, t0: performance.now() } : null;   // 옆으로 휙 → 쪽 넘기기
   }
+  function liveOff() { liveCanvas.remove(); liveCanvas.width = liveCanvas.height = 1; }   // 다 쓴 캔버스는 메모리를 돌려줌
   function liveOn(pg) {
     const k = inkK(pg);
     liveCanvas.width = Math.max(1, Math.floor(pg.w * k)); liveCanvas.height = Math.max(1, Math.floor(pg.h * k));
@@ -1311,7 +1326,8 @@
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     try { docEl.setPointerCapture(e.pointerId); } catch (x) {}
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+    healStale(e);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, t: performance.now() });
     stopFling();
     if (RP) stopReplay();
     // 펜으로 쓰는 중에 닿는 손(손바닥)은 모두 무시. 반대로 손이 닿아 있어도 펜을 대면 펜이 이김
@@ -1419,7 +1435,7 @@
   docEl.addEventListener('pointermove', e => {
     const p = ptrs.get(e.pointerId);
     if (!p) return;
-    p.x = e.clientX; p.y = e.clientY;
+    p.x = e.clientX; p.y = e.clientY; p.t = performance.now();
     if (mode === 'guide' && gd) { moveGuide(e); return; }
     if (mode === 'pinch') {
       const t = touchList(); if (t.length < 2) return;
@@ -1549,11 +1565,47 @@
       case 'scale': commitScale(a); break;
     }
   }
-  docEl.addEventListener('pointerup', endPointer);
-  docEl.addEventListener('pointercancel', e => {
+  function cancelPointer(e) {
     if (mode === 'act' && act && e.pointerId === act.id && ['draw', 'lasso', 'cover', 'clip', 'move', 'scale'].includes(act.k)) { cancelAct(); mode = null; ptrs.delete(e.pointerId); return; }
     endPointer(e);
-  });
+  }
+  docEl.addEventListener('pointerup', endPointer);
+  docEl.addEventListener('pointercancel', cancelPointer);
+  // 손을 뗀 소식이 필기 영역 밖으로 갔을 때(붙잡기 실패)도 받아서 끝냄
+  window.addEventListener('pointerup', e => { if (ptrs.has(e.pointerId)) endPointer(e); });
+  window.addEventListener('pointercancel', e => { if (ptrs.has(e.pointerId)) cancelPointer(e); });
+
+  // 아이패드가 손·펜을 뗀 소식(pointerup)을 빠뜨리면 '아직 누르는 중'으로 남아, 그 뒤로 필기 영역이 아무 입력도 안 받고 굳음
+  // → 새로 누를 때 낡은 상태를 정리. 쓰던 선은 버리지 않고 저장
+  function finishStale() {
+    if (!act) { mode = null; return; }
+    const id = act.id;
+    try { if (act.k === 'draw') commitLive(act); else cancelAct(); } catch (x) { act = null; liveOff(); }
+    act = null; mode = null; ptrs.delete(id);
+  }
+  function healStale(e) {
+    const now = performance.now();
+    if (e.pointerType === 'touch' && e.isPrimary) {
+      // 첫 손가락: 브라우저가 보기에 화면에 닿은 다른 손가락이 없음 → 남아 있는 손가락 기록은 낡은 것
+      for (const [id, p] of ptrs) if (p.type === 'touch' && id !== e.pointerId) ptrs.delete(id);
+      if (mode === 'pinch' || mode === 'pan') { mode = null; pan = pinch = swipe = null; }
+      if (mode === 'guide' && gd && gd.type === 'touch') { mode = null; gd = null; }
+      if (mode === 'act' && act && act.type === 'touch') finishStale();
+    }
+    if (mode === 'act' && act && act.type === 'pen' && act.id !== e.pointerId) {
+      const pp = ptrs.get(act.id);
+      // 펜은 하나뿐이라 새 펜이 닿으면 옛 펜은 이미 뗀 것. 손이 닿을 때는 펜이 4초 넘게 아무 소식이 없을 때만
+      if (e.pointerType === 'pen' || !pp || now - pp.t > 4000) finishStale();
+    }
+    if (mode === 'act' && !act) mode = null;
+  }
+  // 다른 앱으로 가거나 화면이 꺼지면 누르던 것은 모두 끝난 것으로
+  function resetInput() {
+    try { if (mode === 'act' && act) finishStale(); else if (act) cancelAct(); } catch (x) { act = null; }
+    mode = null; act = null; pan = pinch = swipe = null; gd = null; ptrs.clear(); stopFling();
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') resetInput(); });
+  window.addEventListener('blur', resetInput);
   docEl.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; updateVisible(); }); }, { passive: true });
   let scrollRaf = 0;
   // 마우스·트랙패드: Ctrl+휠(또는 두 손가락 오므리기)로 확대
@@ -1599,7 +1651,7 @@
     if (act.k === 'move' || act.k === 'scale') drawPg(act.pg), showSel();
     if (act.k === 'erase') endErase();
     if (act.k === 'laser') { FX.head = null; if (act.grp) act.grp.end = performance.now(); fxKick(); }
-    liveCanvas.remove(); act = null;
+    liveOff(); act = null;
   }
   // 펜을 떼지 않고 잠깐 멈추면 도형 맞춤
   let holdTimer = 0;
@@ -1620,7 +1672,7 @@
   function commitLive(a) {
     clearTimeout(holdTimer);
     if (a.raf) cancelAnimationFrame(a.raf);
-    liveCanvas.remove(); act = null;
+    liveOff(); act = null;
     const { pg, s } = a;
     // 가림막 위를 톡 → 선 대신 가림막 열기·닫기
     if (!a.snapped && performance.now() - a.t0 < 350) {
@@ -1716,7 +1768,7 @@
   }
   function commitLasso(a) {
     if (a.raf) cancelAnimationFrame(a.raf);
-    liveCanvas.remove(); act = null;
+    liveOff(); act = null;
     const set = new Set();
     if (pathLen(a.pts) * S.scale < 12) {
       // 톡 → 그 자리의 맨 위 항목 하나 (사진·글자를 고르기 쉽게)
@@ -2414,6 +2466,20 @@
   });
 
   // ════════════════ 더보기: 빈 쪽 넣기·빼기, 도형 맞춤, 지우개 방식, 쪽 지우기 ════════════════
+  function openErrLog() {
+    const log = ls.get(K.err, []);
+    const text = '이레 노트 문제 기록\n' + log.map(r => `[${r.at}] ${r.msg}\n${r.stack}\n${r.ua} ${r.ver}`).join('\n\n');
+    showModal(`<h2>문제 기록</h2>
+      <p class="hint">앱이 멈추거나 이상할 때 생긴 오류예요. [보내기]로 카톡 등에 보내 주면 고칠 때 도움이 돼요.</p>
+      <textarea readonly rows="10" style="width:100%;font-size:12px">${esc(text)}</textarea>
+      <div class="row"><button class="btn" type="button" data-m="send">보내기</button><button class="btn ghost" type="button" data-m="wipe">기록 지우기</button><button class="btn ghost" type="button" data-m="close">닫기</button></div>`, async b => {
+      const m = b.dataset.m;
+      if (m === 'wipe') { ls.set(K.err, []); closeModal(); toast('문제 기록을 지웠어요.'); return; }
+      if (m !== 'send') { closeModal(); return; }
+      try { if (navigator.share) { await navigator.share({ text }); return; } } catch (x) { return; }
+      try { await navigator.clipboard.writeText(text); toast('복사했어요. 카톡에 붙여 넣어 보내 주세요.'); } catch (x) { toast('복사하지 못했어요. 글을 길게 눌러 복사해 주세요.'); }
+    });
+  }
   function openMore() {
     const pg = S.pages[S.cur], n = S.cur + 1;
     let armed = '';
@@ -2436,6 +2502,7 @@
       <button class="btn ghost wide" type="button" data-m="snap">도형 맞춤: <b>${S.snap ? '켜짐' : '꺼짐'}</b></button>
       <p class="hint">선을 긋고 펜을 떼지 않은 채 잠깐 멈추면 반듯한 직선·원·삼각형·사각형으로 바뀌어요.</p>
       <button class="btn ghost wide" type="button" data-m="emode">지우개: <b>${S.eraseMode === 'part' ? '문지른 부분만' : '선 통째로'}</b></button>
+      ${ls.get(K.err, []).length ? `<button class="btn ghost wide" type="button" data-m="errlog">문제 기록 <small>(${ls.get(K.err, []).length}건 · 고칠 때 필요해요)</small></button>` : ''}
       <button class="btn ghost wide${armed === 'clear' ? ' armed' : ''}" type="button" data-m="clear">${armed === 'clear' ? `한 번 더 누르면 ${n}쪽 필기를 모두 지워요` : `이 쪽 필기 모두 지우기 (${n}쪽)`}</button>
       <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button></div>`;
     const fn = b => {
@@ -2448,6 +2515,7 @@
       if (m === 'qbar') { closeModal(); toggleQbar(); return; }
       if (m === 'qedit') { closeModal(); openQbarEdit(); return; }
       if (m === 'score') { closeModal(); openScore(); return; }
+      if (m === 'errlog') { closeModal(); openErrLog(); return; }
       if (m === 'clip') { closeModal(); setTool('clip'); return; }
       if (m === 'rm') { if (armed !== 'rm') { armed = 'rm'; showModal(html(), fn); return; } closeModal(); removeBlank(pg); return; }
       if (m === 'snap') { S.snap = !S.snap; saveSettings(); armed = ''; showModal(html(), fn); return; }
@@ -3288,6 +3356,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, goPage, FAV, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, ptrs, goPage, FAV, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
