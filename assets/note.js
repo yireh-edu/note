@@ -534,11 +534,13 @@
       if (pr.bottom > r.top - r.height * 0.6 && pr.top < r.bottom + r.height * 0.6) vis.push(i);
     });
     const keep = new Set();
-    vis.forEach(i => { for (let j = i - 1; j <= i + 1; j++) if (j >= 0 && j < S.pages.length) keep.add(j); });
+    // 크게 확대하면 쪽 그림 하나하나가 커지므로 보이는 쪽만 그려 둠 (오래된 아이패드 메모리)
+    const near = S.zoom > 1.3 ? 0 : 1;
+    vis.forEach(i => { for (let j = i - near; j <= i + near; j++) if (j >= 0 && j < S.pages.length) keep.add(j); });
     // 멀리 있는 쪽은 그림을 비워 메모리를 아낌
     S.pages.forEach((pg, i) => {
       if (keep.has(i)) return;
-      if (Math.abs(i - (vis[0] ?? S.cur)) > 2 && pg.pdfScale) {
+      if ((S.zoom > 1.3 || Math.abs(i - (vis[0] ?? S.cur)) > 2) && (pg.pdfScale || pg.inkScale)) {
         const c = pg.el.querySelector('.pdfc'), k = pg.el.querySelector('.inkc');
         c.width = c.height = 0; k.width = k.height = 0; pg.pdfScale = 0; pg.inkScale = 0; pg.el.classList.add('loading');
       }
@@ -637,12 +639,14 @@
   function drawInk(i, off) {
     const pg = S.pages[i]; if (!pg) return;
     const c = pg.el.querySelector('.inkc'), k = inkK(pg);
+    const list = RP && RP.pg === pg ? RP.items.slice(0, RP.i) : pg.ink;
+    // 필기가 없는 쪽은 큰 투명 캔버스를 잡지 않음 (첫 선을 쓰면 drawPg로 제 크기가 됨)
+    if (!list.length && !(RP && RP.pg === pg)) { c.width = c.height = 1; pg.inkScale = S.scale; renderCovers(pg, off); return; }
     const w = Math.max(1, Math.floor(pg.w * k)), h = Math.max(1, Math.floor(pg.h * k));
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const ctx = c.getContext('2d');
     ctx.clearRect(0, 0, w, h);
-    // 다시 보기 중인 쪽은 지금까지 나온 것만
-    const list = RP && RP.pg === pg ? RP.items.slice(0, RP.i) : pg.ink;
+    // 다시 보기 중인 쪽은 지금까지 나온 것만 (list는 위에서)
     for (const s of list) {
       if (off && off.set.has(s)) {
         ctx.save();
@@ -977,6 +981,8 @@
       ctx.shadowBlur = 0;
     }
     // 한번에 광선: 획 전체를 한 줄로, 처음과 끝이 똑같은 밝기로 함께 서서히 사라짐
+    // 펜 뗀 소식이 빠져 끝나지 않은 광선은 그 자리에서 끝냄 (안 그러면 그리기가 영원히 돌아 점점 느려짐)
+    for (const g of FX.strokes) if (!g.end && !(act && act.grp === g)) g.end = now;
     FX.strokes = FX.strokes.filter(g => !g.end || now - g.end < ONCE_HOLD + ONCE_FADE);
     for (const g of FX.strokes) {
       if (g.pts.length < 2) continue;
@@ -1040,6 +1046,7 @@
         const L = rulerLen(), H = RULER_H, key = `${L}|${S.scale}|${DPR()}`;
         if (el.dataset.key !== key) {
           el.dataset.key = key; el.style.width = L + 'px'; el.style.height = H + 'px';
+          const oc = el.querySelector('canvas'); if (oc) oc.width = oc.height = 0;
           el.innerHTML = '<canvas></canvas><span class="gdeg"></span><span class="gknob">↻</span>';
           drawRulerTicks(el.querySelector('canvas'), L, H);
         }
@@ -1441,9 +1448,12 @@
       const t = touchList(); if (t.length < 2) return;
       const [a, b] = t, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       pinch.m = { x: mx, y: my };
-      S.zoom = Math.max(0.5, Math.min(6, pinch.z0 * dist(a, b) / pinch.d0));
-      layout(); restore(pinch.a, mx, my);
-      updatePageNo();
+      pinch.z = Math.max(0.5, Math.min(6, pinch.z0 * dist(a, b) / pinch.d0));
+      // 손가락이 움직일 때마다 배치를 다시 하면 오래된 아이패드는 버거움 → 화면이 그릴 때 한 번만
+      if (!pinch.raf) pinch.raf = requestAnimationFrame(() => {
+        const pc = pinch; if (!pc || mode !== 'pinch') return;
+        pc.raf = 0; S.zoom = pc.z; layout(); restore(pc.a, pc.m.x, pc.m.y); updatePageNo();
+      });
       return;
     }
     if (mode === 'pan' && pan && e.pointerId === pan.id) {
@@ -1522,6 +1532,7 @@
         // 두 손가락으로 옆으로 휙 (확대는 거의 안 함) → 쪽 넘기기
         const pc = pinch, dx = pc.m.x - pc.m0.x, dy = pc.m.y - pc.m0.y;
         mode = null; pinch = null;
+        if (pc.raf) { cancelAnimationFrame(pc.raf); S.zoom = pc.z; layout(); restore(pc.a, pc.m.x, pc.m.y); updatePageNo(); }
         if (pc.z0 <= 1.02 && Math.abs(S.zoom / pc.z0 - 1) < 0.15 && isSwipe(dx, dy, pc.t0)) {
           S.zoom = pc.z0; layout(); turnPage(dx < 0 ? 1 : -1); return;
         }
@@ -1682,7 +1693,8 @@
     if (!a.snapped) s.p = s.p.map(([x, y, pr]) => [r2(x), r2(y), r2(pr)]);
     pg.ink.push(s);
     record({ t: 'add', items: [{ pg, s }] });
-    if (pg.inkScale === S.scale) paintItem(pg.el.querySelector('.inkc').getContext('2d'), s, inkK(pg)); else drawPg(pg);
+    const ic = pg.el.querySelector('.inkc');
+    if (pg.inkScale === S.scale && ic.width > 1) paintItem(ic.getContext('2d'), s, inkK(pg)); else drawPg(pg);
   }
 
   // 지우개: 선 통째로 또는 문지른 부분만(선을 둘로 나눔). 글자·가림막은 닿으면 통째로
