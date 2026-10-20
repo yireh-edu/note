@@ -1015,12 +1015,12 @@
     return null;
   }
   function recognize(P0) {
-    // 펜을 멈추고 기다리는 동안 손떨림으로 생긴 점은 뺌: 3px 넘게 움직였을 때만 점을 남기고, 끝에 몰린 점(6px 안)은 하나로
+    // 펜을 멈추고 기다리는 동안 손떨림으로 생긴 점은 뺌: 3px 넘게 움직였을 때만 점을 남기고, 끝에 몰린 점(12px 안)은 하나로
     const R = P0.map(q => [q[0], q[1]]), mv = 3 / S.scale, P = R.length ? [R[0]] : [];
     for (const q of R) { const l = P[P.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) >= mv) P.push(q); }
     if (R.length) {
       const end = R[R.length - 1];
-      while (P.length > 2 && Math.hypot(P[P.length - 1][0] - end[0], P[P.length - 1][1] - end[1]) < 6 / S.scale) P.pop();
+      while (P.length > 2 && Math.hypot(P[P.length - 1][0] - end[0], P[P.length - 1][1] - end[1]) < 12 / S.scale) P.pop();
       P.push(end);
     }
     if (P.length < 3) return null;
