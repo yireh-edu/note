@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/note.css?v=202610200858">
-<link rel="preload" href="assets/note.js?v=202610200858" as="script">
+<link rel="stylesheet" href="assets/note.css?v=202610200939">
+<link rel="preload" href="assets/note.js?v=202610200939" as="script">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#3E9F7A">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/app-192.png">
@@ -90,7 +90,8 @@
   // ── 반 코드로 반 들어가기 (카카오로 처음 들어왔는데 반이 없을 때) ──
   function join(force) {
     var u = user();
-    if (!token() || (!force && u && u.classes && u.classes.length) || document.getElementById('irae-join')) return;
+    // 원장·선생님은 반에 들 필요가 없어서 묻지 않음 (직접 누르면 넣을 수는 있음)
+    if (!token() || (!force && u && ((u.classes && u.classes.length) || u.role)) || document.getElementById('irae-join')) return;
     var w = document.createElement('div'); w.id = 'irae-join';
     w.innerHTML = '<form class="jc"><h2>' + ((u && u.name) ? esc(u.name) + '님, 반에 들어가요' : '반에 들어가요') + '</h2><p>선생님께 받은 <b>반 코드(6자리)</b>를 넣어 주세요.<br>그러면 푼 문제와 숙제가 선생님께 보여요.</p>' +
       '<input inputmode="numeric" autocomplete="off" maxlength="12" aria-label="반 코드"><button type="submit">반에 들어가기</button><p class="err" role="alert"></p><button type="button" class="later">나중에 할게요</button></form>';
@@ -121,8 +122,9 @@
       if (!el) { el = document.createElement('div'); el.className = 'irae-acc'; f.appendChild(el); }
       var u = user();
       if (token()) {
-        el.innerHTML = (u && u.pic ? '<img src="' + esc(u.pic) + '" alt="">' : '') + '<span>' + esc((u && u.name) || '카카오') + '님' + (u && u.classes && u.classes.length ? ' · ' + esc(u.classes.map(function (c) { return c.name; }).join(', ')) : '') + '</span>' +
-          (u && u.classes && !u.classes.length ? '<button type="button" data-acc="join">반 코드 넣기</button>' : '') + '<button type="button" data-acc="out">로그아웃</button>';
+        var staff = u && u.role;
+        el.innerHTML = (u && u.pic ? '<img src="' + esc(u.pic) + '" alt="">' : '') + '<span>' + esc((u && u.name) || '카카오') + '님' + (staff ? ' · ' + (u.role === 'owner' ? '원장' : '선생님') : u && u.classes && u.classes.length ? ' · ' + esc(u.classes.map(function (c) { return c.name; }).join(', ')) : '') + '</span>' +
+          (staff ? '<button type="button" data-acc="admin">선생님 화면</button>' : u && u.classes && !u.classes.length ? '<button type="button" data-acc="join">반 코드 넣기</button>' : '') + '<button type="button" data-acc="out">로그아웃</button>';
       } else el.innerHTML = '<button type="button" class="kakao" data-acc="in">카카오로 시작하기</button><span>로그인하면 푼 문제가 선생님께 보여요</span>';
     }
     return true;
@@ -131,7 +133,7 @@
     var b = e.target.closest && e.target.closest('[data-acc]'); if (!b) return;
     e.stopPropagation();
     var a = b.getAttribute('data-acc');
-    if (a === 'in') login(); else if (a === 'join') join(true); else if (a === 'out' && confirm('로그아웃할까요? (이 기기의 기록은 그대로 남아요)')) logout();
+    if (a === 'in') login(); else if (a === 'join') join(true); else if (a === 'admin') location.href = SERVER + '/admin'; else if (a === 'out' && confirm('로그아웃할까요? (이 기기의 기록은 그대로 남아요)')) logout();
   }, true);
   function watchFooter() {
     var tries = 0;
@@ -148,7 +150,8 @@
     if (token()) {
       var u = user();
       // 막 로그인했거나 하루가 지났으면 반·이름을 다시 받아 옴
-      var p = (fresh || !u || Date.now() - (u.at || 0) > 864e5) ? refresh() : Promise.resolve(u);
+      // 반도 역할도 없으면(반 코드를 아직 안 넣었거나, 막 원장·선생님이 됨) 열 때마다 다시 확인
+      var p = (fresh || !u || !u.role && !(u.classes && u.classes.length) || Date.now() - (u.at || 0) > 864e5) ? refresh() : Promise.resolve(u);
       p.then(function () { if (fresh) join(); flush(); }, function () {});
     }
   }
@@ -367,7 +370,7 @@
 </head>
 <body>
 <div id="app"></div>
-<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610200858","alwaysSheets":true};</script>
+<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610200939","alwaysSheets":true};</script>
 <script>
 // 학습지 목록은 선생님이 자주 바꾸므로 열 때마다 새로 받음 (?t=지금 시각)
 (function () {
@@ -375,7 +378,7 @@
   s.src = 'sheets.js?t=' + Date.now();
   s.onload = s.onerror = function () {
     var app = document.createElement('script');
-    app.src = 'assets/note.js?v=202610200858';
+    app.src = 'assets/note.js?v=202610200939';
     document.body.appendChild(app);
   };
   document.body.appendChild(s);
