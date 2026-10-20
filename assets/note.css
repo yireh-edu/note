@@ -110,10 +110,11 @@ button{font:inherit; color:inherit}
 .viewer.present .bar{display:none}
 .viewer.present .pages{padding:calc(12px + env(safe-area-inset-top)) 12px 12px}
 .viewer.present .page .pnum{display:none}
-.pbar{position:absolute; left:50%; bottom:calc(14px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:none; align-items:center; gap:2px; background:var(--bar); border:1px solid var(--line); border-radius:16px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.22); z-index:6; max-width:calc(100% - 16px); overflow-x:auto}
+.pbar{position:absolute; left:8px; right:8px; margin:0 auto; width:fit-content; bottom:calc(14px + env(safe-area-inset-bottom)); display:none; flex-wrap:wrap; justify-content:center; align-items:center; gap:1px; background:var(--bar); border:1px solid var(--line); border-radius:16px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.22); z-index:6}
 .viewer.present .pbar{display:flex}
 .pbar .pageno{padding:0 6px}
-.pbar .tb{min-width:36px; padding:0 8px}
+.pbar .tb{min-width:32px; padding:0 5px}
+.pbar .sep{margin:0 2px}
 
 @media (max-width:520px){
   .tb .lbl{display:none}
@@ -275,20 +276,20 @@ button{font:inherit; color:inherit}
 .modal .pp-sizes{display:flex; gap:6px}
 .modal .pp-sizes .tb{border:1px solid var(--line)}
 
-/* 수업 화면 도구 줄 자리: 위(처음)·아래·왼쪽·오른쪽 — 도구 줄만큼 쪽 둘레를 비움 (note.js PB_GAP = 60) */
+/* 수업 화면 도구 줄 자리: 위(처음)·아래·왼쪽·오른쪽 — 도구 줄만큼 쪽 둘레를 비움 (--pbgap: note.js pbFit이 잰 도구 줄 크기) */
 .viewer.pb-t .pbar{top:calc(10px + env(safe-area-inset-top)); bottom:auto}
-.viewer.present.pb-t .pages{padding-top:calc(72px + env(safe-area-inset-top))}
-.viewer.present.pb-b .pages{padding-bottom:72px}
-.viewer.present.pb-l .pages{padding-left:72px}
-.viewer.present.pb-r .pages{padding-right:72px}
-.viewer.pb-l .pbar, .viewer.pb-r .pbar{top:50%; bottom:auto; transform:translateY(-50%); flex-direction:column; max-width:none; max-height:calc(100% - 16px); overflow-x:hidden; overflow-y:auto; scrollbar-width:none}
-.viewer.pb-l .pbar::-webkit-scrollbar, .viewer.pb-r .pbar::-webkit-scrollbar{display:none}
+.viewer.present.pb-t .pages{padding-top:calc(var(--pbgap, 72px) + env(safe-area-inset-top))}
+.viewer.present.pb-b .pages{padding-bottom:var(--pbgap, 72px)}
+.viewer.present.pb-l .pages{padding-left:var(--pbgap, 72px)}
+.viewer.present.pb-r .pages{padding-right:var(--pbgap, 72px)}
+/* 왼쪽·오른쪽: 세로로 쌓다가 화면 높이(--pbrows칸)가 차면 옆 칸으로 */
+.viewer.present.pb-l .pbar, .viewer.present.pb-r .pbar{display:grid; grid-auto-flow:column; grid-template-rows:repeat(var(--pbrows, 14), auto); justify-items:center; top:50%; bottom:auto; right:auto; margin:0; width:auto; transform:translateY(-50%)}
 .viewer.pb-l .pbar{left:calc(8px + env(safe-area-inset-left))}
-.viewer.pb-r .pbar{left:auto; right:calc(8px + env(safe-area-inset-right))}
-.viewer.pb-l .pbar .sep, .viewer.pb-r .pbar .sep{width:26px; height:1px; margin:4px 0}
+.viewer.present.pb-r .pbar{left:auto; right:calc(8px + env(safe-area-inset-right))}
+.viewer.pb-l .pbar .sep, .viewer.pb-r .pbar .sep{display:none}
 .viewer.pb-l .pbar .lbl, .viewer.pb-r .pbar .lbl{display:none}
 .viewer.pb-l .pbar .pageno, .viewer.pb-r .pbar .pageno{padding:2px 0; font-size:11.5px}
-.viewer.present.pb-t .timer, .viewer.present.pb-t .replay{top:calc(72px + env(safe-area-inset-top))}
+.viewer.present.pb-t .timer, .viewer.present.pb-t .replay{top:calc(var(--pbgap, 72px) + env(safe-area-inset-top))}
 .presenting:has(.pb-t) .toast, .presenting:has(.pb-l) .toast, .presenting:has(.pb-r) .toast, .presenting:has(.pb-t) .selbar, .presenting:has(.pb-l) .selbar, .presenting:has(.pb-r) .selbar{bottom:calc(18px + env(safe-area-inset-bottom))}
 .modal .pb-pick{display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin:6px 0 10px}
 .modal .pb-pick .btn{flex-direction:column; gap:6px; padding:10px 6px; font-weight:500}

@@ -474,16 +474,31 @@
   }
 
   // ════════════════ 배치·확대 ════════════════
-  const PB_GAP = 60;   // 수업 화면 도구 줄이 차지하는 폭 (note.css의 .pb-* .pages 여백과 같게)
+  // 수업 화면 도구 줄이 차지하는 폭: 줄 수가 화면 폭에 따라 바뀌어서 실제 크기를 잼 (note.css .pages 여백은 --pbgap)
+  function pbGap() {
+    if (!S.present || S.nobar) return 0;
+    const el = $('#pbar'), side = S.pb === 'l' || S.pb === 'r';
+    const n = side ? el.offsetWidth : el.offsetHeight;
+    return (n || 52) + 12;
+  }
+  // 왼쪽·오른쪽 세로 줄: 화면 높이에 들어가는 만큼씩 끊어 여러 칸으로
+  function pbFit() {
+    const el = $('#pbar');
+    el.style.setProperty('--pbrows', Math.max(4, Math.floor((viewer.clientHeight - 40) / 40)));
+    const g = pbGap() + 'px', changed = viewer.style.getPropertyValue('--pbgap') !== g;
+    viewer.style.setProperty('--pbgap', g);
+    return changed;
+  }
   function baseScale() {
     const W = docEl.clientWidth, H = docEl.clientHeight;
     // 수업 화면: 도구 줄 자리(위·아래·왼쪽·오른쪽)만큼 비워 두고 꽉 차게 (숨겼으면 안 비움)
-    if (S.present) { const pg = S.pages[S.cur], gap = S.nobar ? 0 : PB_GAP, side = S.pb === 'l' || S.pb === 'r'; return Math.max(0.1, Math.min((W - 24 - (side ? gap : 0)) / pg.w, (H - 24 - (side ? 0 : gap)) / pg.h)); }
+    if (S.present) { const pg = S.pages[S.cur], gap = pbGap(), side = S.pb === 'l' || S.pb === 'r'; return Math.max(0.1, Math.min((W - 24 - (side ? gap : 0)) / pg.w, (H - 24 - (side ? 0 : gap)) / pg.h)); }
     const maxW = Math.max(...S.pages.map(p => p.w));
     return Math.max(0.1, Math.min((W - 24) / maxW, 1100 / maxW));
   }
   function layout() {
     if (!S.pages.length) return;
+    if (S.present) pbFit();
     S.scale = baseScale() * S.zoom;
     const gap = Math.round(22 * Math.min(1.5, Math.max(0.6, S.zoom)));
     S.pages.forEach((pg, i) => {
@@ -1953,7 +1968,7 @@
   // 넣는 빈 쪽은 지금 화면 모양 그대로 (가로 아이패드면 가로로 넓게) → 수업 화면에서 화면 가득 보임
   // 긴 변은 지금 쪽의 긴 변(A4면 842pt)과 같게 해서 줄·모눈 간격은 PDF 쪽과 비슷하게
   function screenPageSize(ref) {
-    const side = S.pb === 'l' || S.pb === 'r', gap = S.present && !S.nobar ? PB_GAP : 0;
+    const side = S.pb === 'l' || S.pb === 'r', gap = pbGap();
     const W = docEl.clientWidth - 24 - (side ? gap : 0), H = docEl.clientHeight - 24 - (side ? 0 : gap);
     const L = Math.max(ref.w, ref.h);
     if (!(W > 100 && H > 100)) return { w: r2(ref.w), h: r2(ref.h) };
@@ -2227,39 +2242,41 @@
     const fd = fingerDraws();
     const sizeH = [2, 4, 7][S.size];
     const eraseLbl = S.eraseMode === 'part' ? '부분 지우개' : '지우개';
-    $('#tools').innerHTML = `
+    // 평소 도구 줄과 수업 화면 도구 줄은 같은 도구 (수업 화면은 글자 없이 아이콘만, 넘치면 두 줄)
+    const toolsHtml = L => `
       ${favGroup('<span class="sep"></span>')}
       ${ptButtons(false)}
       <span class="sep"></span>
       ${swButtons()}
-      ${tb('erase', I.erase, eraseLbl, S.tool === 'erase')}
-      <button class="tb" type="button" data-a="size" title="굵기">${`<span class="size-line" style="height:${sizeH}px"></span>`}<span class="lbl">${SIZE_NAMES[S.size]}</span></button>
+      ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', L)}
+      <button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${sizeH}px"></span>${L ? `<span class="lbl">${SIZE_NAMES[S.size]}</span>` : ''}</button>
       <span class="sep"></span>
-      ${laserButton(true)}
-      ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point')}
-      ${tb('cover', I.cover, '가림막', S.tool === 'cover')}
-      ${tb('curtain', I.curtain, '커튼')}
-      ${tb('text', I.text, '글자', S.tool === 'text')}
-      ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso')}
-      ${tb('photo', I.photo, '사진')}
-      ${tb('ruler', I.ruler, '자', !!G.ruler)}
-      ${tb('prot', I.prot, '각도기', !!G.prot)}
-      ${grade ? stampButtons(true) + scoreButton(true) : ''}
-      ${S.tool === 'clip' ? tb('clip', I.cover, '오답 담기', true) : ''}
+      ${laserButton(L)}
+      ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point', L)}
+      ${tb('cover', I.cover, '가림막', S.tool === 'cover', L)}
+      ${tb('curtain', I.curtain, '커튼', null, L)}
+      ${tb('text', I.text, '글자', S.tool === 'text', L)}
+      ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso', L)}
+      ${L ? tb('photo', I.photo, '사진', null, L) : ''}
+      ${tb('ruler', I.ruler, '자', !!G.ruler, L)}
+      ${tb('prot', I.prot, '각도기', !!G.prot, L)}
+      ${grade ? stampButtons(L) + scoreButton(L) : ''}
+      ${S.tool === 'clip' ? tb('clip', I.cover, '오답 담기', true, L) : ''}
       <span class="sep"></span>
       ${tb('undo', I.undo, '되돌리기', null, false)}
       ${tb('redo', I.redo, '다시 하기', null, false)}
       <span class="sep"></span>
-      <button class="tb" type="button" data-a="finger" aria-pressed="${fd}" title="손가락으로 쓰기">${fd ? I.finger : I.hand}<span class="lbl">${fd ? '손가락: 쓰기' : '손가락: 이동'}</span></button>
-      ${tb('zoom-out', I.minus, '축소', null, false)}
-      ${tb('fit', I.fit, '폭 맞춤', null, false)}
-      ${tb('zoom-in', I.plus, '확대', null, false)}
-      ${FS_OK ? tb('fullscreen', I.full, '전체 화면', !!fsElement()) : ''}
+      <button class="tb" type="button" data-a="finger" aria-pressed="${fd}" title="${fd ? '손가락: 쓰기' : '손가락: 이동'}" aria-label="${fd ? '손가락: 쓰기' : '손가락: 이동'}">${fd ? I.finger : I.hand}${L ? `<span class="lbl">${fd ? '손가락: 쓰기' : '손가락: 이동'}</span>` : ''}</button>
+      ${L ? tb('zoom-out', I.minus, '축소', null, false) : ''}
+      ${tb('fit', I.fit, L ? '폭 맞춤' : '화면에 맞춤', null, false)}
+      ${L ? tb('zoom-in', I.plus, '확대', null, false) : ''}
+      ${FS_OK && L ? tb('fullscreen', I.full, '전체 화면', !!fsElement(), L) : ''}
       <span class="sep"></span>
-      ${tb('thumbs', I.grid, '쪽 목록')}
-      ${tb('timer', I.timer, '타이머')}
-      ${tb('qbar', I.qbar, '빠른 도구', Q.show)}
-      ${tb('more', I.more, '더보기')}`;
+      ${tb('thumbs', I.grid, '쪽 목록', null, L)}
+      ${tb('timer', I.timer, '타이머', null, L)}
+      ${L ? tb('qbar', I.qbar, '빠른 도구', Q.show, L) : ''}
+      ${tb('more', I.more, '더보기', null, L)}`;
+    $('#tools').innerHTML = toolsHtml(true);
     // 자주 찾는 [수업 화면]·[보내기]는 위 줄에 늘 보이게
     const sendIcon = sheet || grade ? I.send : I.save, sendLbl = sheet ? '선생님께 보내기' : grade ? '채점 돌려주기' : 'PDF로 저장';
     $('#bar-actions').innerHTML = `
@@ -2271,24 +2288,11 @@
       <span class="pageno"></span>
       ${tb('next', I.next, '다음 쪽', null, false)}
       <span class="sep"></span>
-      ${favGroup('<span class="sep"></span>')}
-      <button class="tb pt" type="button" data-a="penpanel" aria-pressed="${S.tool === 'draw'}" aria-label="펜·색 고르기 (지금: ${PTYPES[S.pt]})" title="펜·색 고르기 (지금: ${PTYPES[S.pt]})">${I[S.pt]}<span class="ptc" style="background:${S.col[S.pt]}"></span></button>
-      ${swButtons()}
-      ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
-      ${laserButton(false)}
-      ${tb('point', pointIcon(), '따라다니기만 (한 번 더 누르면 그림 고르기)', S.tool === 'point', false)}
-      ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
-      ${tb('curtain', I.curtain, '커튼', null, false)}
-      ${tb('ruler', I.ruler, '자', !!G.ruler, false)}
-      ${tb('prot', I.prot, '각도기', !!G.prot, false)}
-      ${grade ? stampButtons(false) + scoreButton(false) : ''}
-      ${tb('undo', I.undo, '되돌리기', null, false)}
-      <span class="sep"></span>
-      ${tb('timer', I.timer, '타이머', null, false)}
-      ${tb('more', I.more, '더보기', null, false)}
+      ${toolsHtml(false)}
       ${tb('bar-toggle', I.tbar, '도구 줄 숨기기 (빠른 도구만)', null, false)}
       <span class="sep"></span>
-      <button class="tb" type="button" data-a="exit-present">${I.close}<span class="lbl">끝내기</span></button>`;
+      <button class="tb" type="button" data-a="exit-present" title="수업 화면 끝내기" aria-label="수업 화면 끝내기">${I.close}</button>`;
+    if (S.present && pbFit()) scheduleLayout();   // 도구가 늘거나 줄어 줄 수가 바뀌면 쪽 크기도 다시
     renderQbar();
     updateUndo(); updatePageNo();
     folSync();
@@ -2578,6 +2582,7 @@
       ${pg.blank ? `<button class="btn ghost wide${armed === 'rm' ? ' armed' : ''}" type="button" data-m="rm">${armed === 'rm' ? '한 번 더 누르면 뺄게요' : `이 넣은 쪽 빼기 (${n}쪽)`}</button>` : ''}
       <p class="mh">수업</p>
       <button class="btn ghost wide" type="button" data-m="pick">발표자 뽑기</button>
+      ${S.present ? '<button class="btn ghost wide" type="button" data-m="photo">사진 넣기</button>' : ''}
       <button class="btn ghost wide" type="button" data-m="qbar">빠른 도구 (화면 옆 동그라미): <b>${Q.show ? '보임' : '숨김'}</b></button>
       <button class="btn ghost wide" type="button" data-m="qedit">빠른 도구에 넣을 것 고르기</button>
       <button class="btn ghost wide" type="button" data-m="follow">따라다니는 그림: <b>${FOLLOW[S.follow].n}</b> <small>(펜 끝에 붙어 다님)</small></button>
@@ -2597,6 +2602,7 @@
       const m = b.dataset.m;
       if (m === 'add') { closeModal(); addBlank(b.dataset.v); return; }
       if (m === 'pick') { closeModal(); openPicker(); return; }
+      if (m === 'photo') { closeModal(); photoPage = S.pages[S.cur]; $('#img-in').click(); return; }
       if (m === 'replay') { closeModal(); startReplay(); return; }
       if (m === 'follow') { closeModal(); openFollow(); return; }
       if (m === 'pbside') { closeModal(); openPbSide(); return; }
