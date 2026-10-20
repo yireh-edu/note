@@ -76,17 +76,6 @@
   const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1); return w + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? a : b); };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const set0 = ls.get(K.set, {});
-  const FAV0 = [{ t: 'pen', c: '#1B2430', size: 1 }, { t: 'pen', c: '#D2372A', size: 0 }, { t: 'hl', c: '#FFD400', size: 1 }];
-  const favFix = f => {
-    if (!f || ![0, 1, 2].includes(f.size)) return null;
-    if (Number.isInteger(f.pen) && OLD_PENS[f.pen]) return { t: OLD_PENS[f.pen][0], c: OLD_PENS[f.pen][1], size: f.size };
-    return PTYPES[f.t] && isCol(f.c) ? { t: f.t, c: f.c, size: f.size } : null;
-  };
-  // 즐겨찾기 펜 3칸: 넣기 전에는 비어 있고(null) 화면에 안 보임. 예전 기본값 그대로인 칸(손대지 않은 것)도 비움
-  const FAV = (a => {
-    const v = Array.isArray(a) && a.length === 3 ? a.map(favFix) : [null, null, null];
-    return v.map((f, i) => f && !(f.t === FAV0[i].t && f.c === FAV0[i].c && f.size === FAV0[i].size) ? f : null);
-  })(ls.get(K.fav, null));
   // 펜 설정: 종류(pt), 종류마다 지금 색(col)과 색 칸 3개(sw)
   const pen0 = (() => {
     const old = Number.isInteger(set0.pen) && OLD_PENS[set0.pen];
@@ -213,6 +202,7 @@
       <canvas class="fx" id="fx" aria-hidden="true"></canvas>
       <div class="follow" id="follow" aria-hidden="true" hidden></div>
       <div class="qpop" id="qpop" hidden></div>
+      <div class="penpop" id="penpop" hidden></div>
       <button class="barshow" type="button" data-a="bar-toggle" aria-label="도구 줄 보이기" title="도구 줄 보이기"></button>
     </div>
     <div class="modal" id="modal" hidden><div class="card" role="dialog" aria-modal="true" id="modal-card"></div></div>
@@ -1227,17 +1217,25 @@
   function renderCurtain(pg) {
     if (!pg.el) return;
     let el = pg.el.querySelector('.curtain');
-    if (!curtains.has(pg)) { if (el) el.remove(); return; }
+    if (!curtains.has(pg)) { if (el) el.remove(); curtainSync(); return; }
     if (!el) {
       el = document.createElement('div'); el.className = 'curtain';
-      el.innerHTML = '<span class="cg">▼ 끌어 내리거나 톡</span>';
+      el.innerHTML = '<span class="cg">▼ 끌어 내리거나 톡</span><button type="button" class="cx" aria-label="커튼 걷기">× 걷기</button>';
       pg.el.appendChild(el); bindCurtain(el, pg);
     }
     const y = curtains.get(pg);
+    curtainSync();
     el.style.top = y / pg.h * 100 + '%'; el.style.height = (1 - y / pg.h) * 100 + '%';
+  }
+  // 도구 줄 [커튼] 버튼: 지금 쪽에 커튼이 걸려 있으면 눌린 표시 + '커튼 걷기'
+  function curtainSync() {
+    const on = curtains.has(S.pages[S.cur]);
+    viewer.querySelectorAll('[data-a="curtain"]').forEach(b => { b.setAttribute('aria-pressed', on); b.title = b.ariaLabel = on ? '커튼 걷기' : '커튼'; const l = b.querySelector('.lbl'); if (l) l.textContent = on ? '커튼 걷기' : '커튼'; });
   }
   function bindCurtain(el, pg) {
     let drag = null;
+    el.querySelector('.cx').addEventListener('pointerdown', e => e.stopPropagation());
+    el.querySelector('.cx').addEventListener('click', e => { e.stopPropagation(); curtains.delete(pg); renderCurtain(pg); toast('커튼을 걷었어요.'); });
     el.addEventListener('pointerdown', e => {
       e.stopPropagation(); e.preventDefault();
       try { el.setPointerCapture(e.pointerId); } catch (x) {}
@@ -2058,6 +2056,7 @@
     updateVisible();
   }
   function updatePageNo(vis) {
+    if (typeof curtainSync === 'function') try { curtainSync(); } catch (x) {}
     if (!S.pages.length) return;
     if (!S.present) {
       const r = docEl.getBoundingClientRect(), mid = r.top + r.height * 0.4;
@@ -2077,22 +2076,11 @@
   // ════════════════ 도구 막대 ════════════════
   const tb = (a, icon, label, pressed, showLabel = true) => `<button class="tb" type="button" data-a="${a}"${pressed == null ? '' : ` aria-pressed="${!!pressed}"`} aria-label="${label}" title="${label}">${icon}${showLabel ? `<span class="lbl">${label}</span>` : ''}</button>`;
   // 펜 종류 버튼(연필·볼펜·펜촉·형광펜): 고른 종류를 한 번 더 누르면 [펜·색 고르기]
-  const ptButton = (t, showLabel) => `<button class="tb pt" type="button" data-pt="${t}" aria-pressed="${S.tool === 'draw' && S.pt === t}" aria-label="${PTYPES[t]}" title="${PTYPES[t]}${S.tool === 'draw' && S.pt === t ? ' · 한 번 더 누르면 색·굵기' : ''}">${I[t]}<span class="ptc" style="background:${S.col[t]}"></span>${showLabel ? `<span class="lbl">${PTYPES[t]}</span>` : ''}</button>`;
+  const ptButton = (t, showLabel) => `<button class="tb pt" type="button" data-pt="${t}" aria-pressed="${S.tool === 'draw' && S.pt === t}" aria-label="${PTYPES[t]}" title="${PTYPES[t]} · 누르면 아래에 색·굵기">${I[t]}<span class="ptc" style="background:${S.col[t]}"></span>${showLabel ? `<span class="lbl">${PTYPES[t]}</span>` : ''}</button>`;
   function ptButtons(showLabel) { return PT_KEYS.map(t => ptButton(t, showLabel)).join(''); }
   // 지금 펜 종류의 색 칸 3개: 누르면 그 색, 고른 칸을 한 번 더 누르면 그 칸의 색 바꾸기
   const swButton = i => { const c = S.sw[S.pt][i], on = S.tool === 'draw' && S.col[S.pt] === c; return `<button class="tb sw" type="button" data-sw="${i}" aria-pressed="${on}" aria-label="${penLabel(S.pt, c)}" title="${penLabel(S.pt, c)}${on ? ' · 한 번 더 누르면 색 바꾸기' : ''}">
       <span class="dot${S.pt === 'hl' ? ' hl' : ''}" style="background:${c}"></span></button>`; };
-  function swButtons() { return [0, 1, 2].map(swButton).join(''); }
-  function penButtons() { return ptButtons(false) + swButtons(); }
-  // 즐겨찾기 펜 3칸: 누르면 그 색·굵기로, 길게 누르면 지금 펜을 저장
-  function favButtons() { return FAV.map((f, n) => favButton(n)).join(''); }
-  const favGroup = after => { const h = favButtons(); return h ? h + after : ''; };   // 넣은 즐겨찾기가 있을 때만 (구분선 포함)
-  function favButton(n) {
-    const f = FAV[n]; if (!f) return '';
-    const d = [9, 13, 18][f.size], lb = penLabel(f.t, f.c);
-    return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pt === f.t && S.col[f.t] === f.c && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${lb} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1}: ${lb} · 길게 누르면 지금 펜 저장">
-      <span class="fv"><span class="dot${f.t === 'hl' ? ' hl' : ''}${rough(f) ? ' pc' : ''}" style="background:${f.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
-  }
   function stampButtons(showLabel) {
     return Object.entries(STAMPS).map(([k, label]) => `<button class="tb stamp" type="button" data-stamp="${k}" aria-pressed="${S.tool === 'stamp' && S.stamp === k}" aria-label="${label} 도장" title="${label} 도장"><span class="glyph">${{ o: '○', v: '✓', x: '✗' }[k]}</span>${showLabel && k === 'o' ? '<span class="lbl">도장</span>' : ''}</button>`).join('');
   }
@@ -2100,7 +2088,6 @@
   // ════════════════ 빠른 도구 (화면 옆에 떠 있는 세로 막대) ════════════════
   // 자주 쓰는 펜·레이저 등을 손 가까이: [✎]로 넣을 것을 고르고, 맨 위 손잡이를 끌어 옮기고(왼쪽·오른쪽), 톡 누르면 접기·펴기
   const Q_ITEMS = [
-    ['fav0', '즐겨찾기 1'], ['fav1', '즐겨찾기 2'], ['fav2', '즐겨찾기 3'],
     ...PT_KEYS.map(t => ['t' + t, PTYPES[t]]), ['sw0', '색 칸 1'], ['sw1', '색 칸 2'], ['sw2', '색 칸 3'], ['penpanel', '펜·색 고르기'],
     ['erase', '지우개'], ['size', '굵기'],
     ['laserx', '레이저'], ['point', '따라다니기만'],
@@ -2109,20 +2096,19 @@
   ];
   const Q_NAMES = Object.fromEntries(Q_ITEMS);
   const Q0 = { items: [], side: 'r', y: 0.3, show: false };   // 넣기 전에는 아무것도 없음 (넣은 것만 보임)
-  const Q_OLD0 = 'fav0,fav1,fav2,laser4,erase,undo';   // 예전 기본 목록: 손대지 않았으면 비움   // 처음엔 숨김: [빠른 도구] 버튼으로 켬   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
+  const Q_OLD0 = 'fav0,fav1,fav2,laser4,erase,undo';   // 예전 기본 목록: 손대지 않았으면 비움
   const Q = (q => {
     const o = Object.assign({}, Q0, q && typeof q === 'object' ? q : {});
     // 예전 펜 칸(pen0~4) → 볼펜·형광펜
     if (!o.v && Array.isArray(o.items) && o.items.join() === Q_OLD0) o.items = [];
     o.v = 2;
     // 레이저 네 가지 → 레이저 버튼 하나 (누르면 고른 레이저, 한 번 더 누르면 종류 고르기). 빈 즐겨찾기 칸은 뺌
-    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : /^laser[2-5]?$/.test(k) ? 'laserx' : k))].filter(k => Q_NAMES[k] && !(/^fav\d$/.test(k) && !FAV[Number(k[3])])) : Q0.items.slice();
+    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : /^laser[2-5]?$/.test(k) ? 'laserx' : k))].filter(k => Q_NAMES[k]) : Q0.items.slice();
     o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.show = !!o.show; delete o.fold;
     return o;
   })(ls.get(K.qbar, null));
   const saveQ = () => ls.set(K.qbar, Q);
   function qButton(k) {
-    if (/^fav\d$/.test(k)) return favButton(Number(k[3]));
     if (/^t(pencil|pen|nib|chalk|hl)$/.test(k)) return ptButton(k.slice(1), false);
     if (/^sw\d$/.test(k)) return swButton(Number(k[2]));
     if (k === 'penpanel') return tb('penpanel', I.palette, '펜·색 고르기', null, false);
@@ -2177,9 +2163,6 @@
         <label class="pp-custom" title="직접 고르기"><input type="color" id="pp-color" value="${cur}" aria-label="색 직접 고르기"><span>직접</span></label></div>
       <p class="mh">굵기</p>
       <div class="pp-sizes">${[0, 1, 2].map(i => `<button class="tb" type="button" data-m="size" data-v="${i}" aria-pressed="${i === S.size}"><span class="size-line" style="height:${Math.max(2, Math.min(12, SIZES[t][i] * (t === 'hl' ? 0.5 : 1.6)))}px"></span><span class="lbl">${SIZE_NAMES[i]}</span></button>`).join('')}</div>
-      <p class="mh">즐겨찾기 <small>넣은 펜만 도구 줄 맨 앞에 보여요 (3개까지)</small></p>
-      ${FAV.some(Boolean) ? `<ul class="pp-favs">${FAV.map((f, n) => f ? `<li><span class="dot${f.t === 'hl' ? ' hl' : ''}" style="background:${f.c}"></span><span>${esc(penLabel(f.t, f.c))} · ${SIZE_NAMES[f.size]}</span><button class="tb" type="button" data-m="favrm" data-v="${n}">빼기</button></li>` : '').join('')}</ul>` : ''}
-      <button class="btn ghost wide" type="button" data-m="favadd"${favHas({ t, c: S.col[t], size: S.size }) || !FAV.includes(null) ? ' disabled' : ''}>★ 지금 펜을 즐겨찾기에 넣기</button>
       <div class="row"><button class="btn" type="button" data-m="close">다 골랐어요</button></div>`;
     };
     const setCol = c => { S.sw[t][at] = c; S.col[t] = c; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); };
@@ -2190,8 +2173,6 @@
       if (m === 'slot') { at = Number(v); S.col[t] = S.sw[t][at]; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); show(); return; }
       if (m === 'col') { setCol(v); show(); return; }
       if (m === 'size') { S.size = Number(v); saveSettings(); renderTools(); show(); return; }
-      if (m === 'favadd') { S.pt = t; S.tool = 'draw'; saveSettings(); addFav(); show(); return; }
-      if (m === 'favrm') { removeFav(Number(v)); show(); return; }
     };
     // 미리 보기: 지금 고른 펜으로 물결 한 줄
     const prev = () => {
@@ -2219,7 +2200,7 @@
         <button class="tb" type="button" data-m="down" data-v="${n}" aria-label="아래로"${n < items.length - 1 ? '' : ' disabled'}>↓</button>
         <button class="tb" type="button" data-m="rm" data-v="${n}">빼기</button></li>`).join('')}</ol>` : '<p class="hint">아직 없어요. 아래에서 골라 넣으세요.</p>'}
       <p class="mh">더 넣기</p>
-      <div class="qadd">${Q_ITEMS.filter(([k]) => !items.includes(k) && !(/^fav\d$/.test(k) && !FAV[Number(k[3])])).map(([k, label]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">+ ${esc(label)}</button>`).join('')}</div>
+      <div class="qadd">${Q_ITEMS.filter(([k]) => !items.includes(k)).map(([k, label]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">+ ${esc(label)}</button>`).join('')}</div>
       <div class="row"><button class="btn ghost" type="button" data-m="reset">모두 빼기</button><button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">저장</button></div>`;
     const fn = b => {
       const m = b.dataset.m, n = Number(b.dataset.v);
@@ -2243,23 +2224,20 @@
     const sizeH = [2, 4, 7][S.size];
     const eraseLbl = S.eraseMode === 'part' ? '부분 지우개' : '지우개';
     // 평소 도구 줄과 수업 화면 도구 줄은 같은 도구 (수업 화면은 글자 없이 아이콘만, 넘치면 두 줄)
+    const curtainOn = curtains.has(S.pages[S.cur]);
     const toolsHtml = L => `
-      ${favGroup('<span class="sep"></span>')}
+      ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point', L)}
+      <span class="sep"></span>
       ${ptButtons(false)}
       <span class="sep"></span>
-      ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', L)}
-      <button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${sizeH}px"></span>${L ? `<span class="lbl">${SIZE_NAMES[S.size]}</span>` : ''}</button>
+      ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso', L)}
       <span class="sep"></span>
       ${laserButton(L)}
-      ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point', L)}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover', L)}
-      ${tb('curtain', I.curtain, '커튼', null, L)}
+      ${tb('curtain', I.curtain, curtainOn ? '커튼 걷기' : '커튼', curtainOn, L)}
       ${tb('text', I.text, '글자', S.tool === 'text', L)}
-      ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso', L)}
       ${L ? tb('photo', I.photo, '사진', null, L) : ''}
-      ${tb('ruler', I.ruler, '자', !!G.ruler, L)}
-      ${tb('prot', I.prot, '각도기', !!G.prot, L)}
       ${grade ? stampButtons(L) + scoreButton(L) : ''}
       ${S.tool === 'clip' ? tb('clip', I.cover, '오답 담기', true, L) : ''}
       <span class="sep"></span>
@@ -2267,14 +2245,9 @@
       ${tb('redo', I.redo, '다시 하기', null, false)}
       <span class="sep"></span>
       <button class="tb" type="button" data-a="finger" aria-pressed="${fd}" title="${fd ? '손가락: 쓰기' : '손가락: 이동'}" aria-label="${fd ? '손가락: 쓰기' : '손가락: 이동'}">${fd ? I.finger : I.hand}${L ? `<span class="lbl">${fd ? '손가락: 쓰기' : '손가락: 이동'}</span>` : ''}</button>
-      ${L ? tb('zoom-out', I.minus, '축소', null, false) : ''}
       ${tb('fit', I.fit, L ? '폭 맞춤' : '화면에 맞춤', null, false)}
-      ${L ? tb('zoom-in', I.plus, '확대', null, false) : ''}
-      ${FS_OK && L ? tb('fullscreen', I.full, '전체 화면', !!fsElement(), L) : ''}
       <span class="sep"></span>
       ${tb('thumbs', I.grid, '쪽 목록', null, L)}
-      ${tb('timer', I.timer, '타이머', null, L)}
-      ${L ? tb('qbar', I.qbar, '빠른 도구', Q.show, L) : ''}
       ${tb('more', I.more, '더보기', null, L)}`;
     $('#tools').innerHTML = toolsHtml(true);
     // 자주 찾는 [수업 화면]·[보내기]는 위 줄에 늘 보이게
@@ -2344,43 +2317,11 @@
     const sel = window.getSelection && window.getSelection();
     if (sel && sel.rangeCount && !sel.isCollapsed && !editable(e.target) && !editable(document.activeElement)) sel.removeAllRanges();
   }, true);
-  let favHold = 0, favLong = false;
-  viewer.addEventListener('pointerdown', e => {
-    const b = e.target.closest('[data-fav]'); if (!b || b.closest('#qbar')) return;   // 빠른 도구 안의 즐겨찾기는 꾹 눌러 끌기
-    favLong = false; clearTimeout(favHold);
-    favHold = setTimeout(() => { favLong = true; saveFav(Number(b.dataset.fav)); }, 600);
-  });
-  for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, () => clearTimeout(favHold));
-  // 지금 펜을 빈 즐겨찾기 칸에 넣기 / 빼기 ([펜·색 고르기] 창에서)
-  const curPen = () => ({ t: S.pt, c: S.col[S.pt], size: S.size });
-  const favHas = p => FAV.some(f => f && f.t === p.t && f.c === p.c && f.size === p.size);
-  function addFav() {
-    const n = FAV.indexOf(null), p = curPen();
-    if (favHas(p)) { toast('지금 펜은 이미 즐겨찾기에 있어요.'); return false; }
-    if (n < 0) { toast('즐겨찾기는 3개까지예요. 하나를 빼거나, 즐겨찾기를 길게 눌러 지금 펜으로 바꾸세요.', 3600); return false; }
-    FAV[n] = p; ls.set(K.fav, FAV); renderTools();
-    toast(`즐겨찾기에 ‘${penLabel(p.t, p.c)} · ${SIZE_NAMES[p.size]}’ 펜을 넣었어요. 도구 줄 맨 앞에 보여요.`, 3200);
-    return true;
-  }
-  function removeFav(n) {
-    FAV[n] = null; ls.set(K.fav, FAV);
-    if (Q.items.includes('fav' + n)) { Q.items = Q.items.filter(k => k !== 'fav' + n); saveQ(); }
-    renderTools();
-  }
-  function saveFav(n) {
-    if (S.tool !== 'draw') { toast('먼저 펜 색과 굵기를 고른 뒤, 즐겨찾기 칸을 길게 누르세요.'); return; }
-    FAV[n] = { t: S.pt, c: S.col[S.pt], size: S.size }; ls.set(K.fav, FAV);
-    renderTools();
-    toast(`즐겨찾기 ${n + 1}번에 ‘${penLabel(S.pt, S.col[S.pt])} · ${SIZE_NAMES[S.size]}’을 저장했어요.`);
-  }
-  viewer.addEventListener('contextmenu', e => { if (e.target.closest('[data-fav]')) e.preventDefault(); });
-
   // 도구 버튼을 꾹 누르면 [빠른 도구에 추가] (이미 있으면 [빼기])
   let qHold = 0, qLong = false, qHoldAt = null;
   const qKeyOf = b => {
     if (b.dataset.pt != null) return 't' + b.dataset.pt;
     if (b.dataset.sw != null) return 'sw' + b.dataset.sw;
-    if (b.dataset.fav != null) return 'fav' + b.dataset.fav;
     const a = b.dataset.a;
     if (a === 'laser-x') return 'laserx';
     return a && Q_NAMES[a] ? a : null;
@@ -2390,7 +2331,7 @@
     const pop = $('#qpop');
     if (!pop.hidden && !e.target.closest('#qpop')) hideQpop();
     const b = e.target.closest('#tools .tb, #pbar .tb, #qbar .tb');
-    if (!b || (b.dataset.fav != null && !b.closest('#qbar'))) return;
+    if (!b) return;
     const k = qKeyOf(b); if (!k) return;
     qHoldAt = { x: e.clientX, y: e.clientY };
     qHold = setTimeout(() => {
@@ -2466,6 +2407,41 @@
     pop.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (err) {}
   }
+  // ── 펜 아래 작은 창: 색 칸 3개 · 굵기 3 · [색 더 고르기] ──
+  const PP = { t: null, host: null };
+  function penPopHtml(t) {
+    return `<div class="pp-row">${[0, 1, 2].map(i => { const c = S.sw[t][i]; return `<button type="button" class="pp-c${S.col[t] === c ? ' on' : ''}" data-pps="${i}" aria-label="${penLabel(t, c)}" title="${penLabel(t, c)}"><span class="dot${t === 'hl' ? ' hl' : ''}" style="background:${c}"></span></button>`; }).join('')}</div>
+      <div class="pp-row">${[0, 1, 2].map(i => `<button type="button" class="pp-z${S.size === i ? ' on' : ''}" data-ppz="${i}" aria-label="굵기 ${SIZE_NAMES[i]}" title="${SIZE_NAMES[i]}"><span class="size-line" style="height:${[2, 4, 7][i]}px"></span></button>`).join('')}</div>
+      <button type="button" class="pp-more" data-ppm="1">색 더 고르기…</button>`;
+  }
+  function showPenPop(host, t) {
+    const pop = $('#penpop');
+    PP.t = t; PP.host = host;
+    pop.innerHTML = penPopHtml(t); pop.hidden = false;
+    placePenPop();
+  }
+  function placePenPop() {
+    const pop = $('#penpop'), b = PP.host && PP.host.querySelector(`[data-pt="${PP.t}"]`);
+    if (!b) { hidePenPop(); return; }
+    const r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    // 세로 줄(왼쪽·오른쪽 도구 줄, 빠른 도구)이면 옆에, 아니면 아래(자리가 없으면 위)에
+    const side = PP.host.id === 'qbar' ? (Q.side === 'l' ? 'r' : 'l') : PP.host.id === 'pbar' && S.present && (S.pb === 'l' || S.pb === 'r') ? (S.pb === 'l' ? 'r' : 'l') : null;
+    let x, y;
+    if (side) { x = side === 'r' ? r.right + 8 : r.left - w - 8; y = r.top + r.height / 2 - h / 2; }
+    else { x = r.left + r.width / 2 - w / 2; y = r.bottom + 8 + h < H ? r.bottom + 8 : r.top - h - 8; }
+    pop.style.left = clamp(x, 8, W - w - 8) + 'px'; pop.style.top = clamp(y, 8, H - h - 8) + 'px';
+  }
+  function hidePenPop() { const p = $('#penpop'); p.hidden = true; p.innerHTML = ''; PP.t = PP.host = null; }
+  $('#penpop').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    e.stopPropagation();
+    const t = PP.t || S.pt;
+    if (b.dataset.pps != null) { S.pt = t; S.col[t] = S.sw[t][Number(b.dataset.pps)]; hidePenPop(); setTool('draw'); return; }
+    if (b.dataset.ppz != null) { S.size = Number(b.dataset.ppz); saveSettings(); renderTools(); $('#penpop').innerHTML = penPopHtml(t); return; }
+    if (b.dataset.ppm != null) { hidePenPop(); openPenPanel(); }
+  });
+  viewer.addEventListener('pointerdown', e => { if (!$('#penpop').hidden && !e.target.closest('#penpop, [data-pt]')) hidePenPop(); }, true);
+  window.addEventListener('resize', () => { if (!$('#penpop').hidden) placePenPop(); });
   function hideQpop() { const p = $('#qpop'); p.hidden = true; p.innerHTML = ''; }
   function qpopAct(add, k) {
     hideQpop();
@@ -2484,14 +2460,12 @@
     const b = e.target.closest('button'); if (!b || !viewer.contains(b)) return;
     if (qLong) { qLong = false; return; }   // 꾹 누른 뒤 손을 뗀 것 → 버튼 기능은 안 함
     if (b.dataset.a === 'qpop-add' || b.dataset.a === 'qpop-del') { qpopAct(b.dataset.a === 'qpop-add', b.dataset.k); return; }
-    if (b.dataset.fav) {
-      if (favLong) { favLong = false; return; }
-      const f = FAV[Number(b.dataset.fav)]; if (!f) return; S.pt = f.t; S.col[f.t] = f.c; S.size = f.size; setTool('draw'); return;
-    }
     if (b.dataset.pt) {
-      const t = b.dataset.pt;
-      if (S.tool === 'draw' && S.pt === t) { openPenPanel(); return; }
-      S.pt = t; setTool('draw'); return;
+      const t = b.dataset.pt, host = b.closest('#tools, #pbar, #qbar'), open = !$('#penpop').hidden && PP.t === t && PP.host === host;
+      if (!(S.tool === 'draw' && S.pt === t)) { S.pt = t; setTool('draw'); }
+      if (open) hidePenPop();
+      else if (host) showPenPop(host, t);
+      return;
     }
     if (b.dataset.sw) {
       const i = Number(b.dataset.sw), c = S.sw[S.pt][i];
@@ -2581,6 +2555,7 @@
       <div class="grid-btns">${Object.entries(PATTERN).map(([k, v]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">${v}</button>`).join('')}</div>
       ${pg.blank ? `<button class="btn ghost wide${armed === 'rm' ? ' armed' : ''}" type="button" data-m="rm">${armed === 'rm' ? '한 번 더 누르면 뺄게요' : `이 넣은 쪽 빼기 (${n}쪽)`}</button>` : ''}
       <p class="mh">수업</p>
+      <div class="grid-btns"><button class="btn ghost" type="button" data-m="ruler">${G.ruler ? '자 치우기' : '자'}</button><button class="btn ghost" type="button" data-m="prot">${G.prot ? '각도기 치우기' : '각도기'}</button><button class="btn ghost" type="button" data-m="timer">타이머</button></div>
       <button class="btn ghost wide" type="button" data-m="pick">발표자 뽑기</button>
       ${S.present ? '<button class="btn ghost wide" type="button" data-m="photo">사진 넣기</button>' : ''}
       <button class="btn ghost wide" type="button" data-m="qbar">빠른 도구 (화면 옆 동그라미): <b>${Q.show ? '보임' : '숨김'}</b></button>
@@ -2602,6 +2577,8 @@
       const m = b.dataset.m;
       if (m === 'add') { closeModal(); addBlank(b.dataset.v); return; }
       if (m === 'pick') { closeModal(); openPicker(); return; }
+      if (m === 'ruler' || m === 'prot') { closeModal(); toggleGuide(m); return; }
+      if (m === 'timer') { closeModal(); openTimer(); return; }
       if (m === 'photo') { closeModal(); photoPage = S.pages[S.cur]; $('#img-in').click(); return; }
       if (m === 'replay') { closeModal(); startReplay(); return; }
       if (m === 'follow') { closeModal(); openFollow(); return; }
@@ -3467,6 +3444,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, ptrs, paintItem, goPage, FAV, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, ptrs, paintItem, goPage, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
