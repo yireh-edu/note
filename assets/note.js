@@ -69,7 +69,7 @@
   const STAMPS = { o: '동그라미', v: '체크', x: '가위표' };
   const HL_ALPHA = 0.38;
   const FONT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
-  const TOOLS = ['draw', 'erase', 'laser', 'laser2', 'laser3', 'laser4', 'laser5', 'point', 'cover', 'text', 'lasso'];
+  const TOOLS = ['draw', 'erase', 'laser', 'laser2', 'laser3', 'laser4', 'laser5', 'laser6', 'point', 'cover', 'text', 'lasso'];
   const PB_SIDES = { t: '위', b: '아래', l: '왼쪽', r: '오른쪽' };   // 수업 화면 도구 줄 자리
   const A4 = { w: 595.28, h: 841.89 };
   const WRONG = 'wrong:main';   // 오답 노트 (PDF 없이 넣은 쪽만 있는 문서)
@@ -97,7 +97,7 @@
     follow: typeof set0.follow === 'string' ? set0.follow : 'none',   // 펜 끝을 따라다니는 그림 (FOLLOW)
     pb: PB_SIDES[set0.pb] ? set0.pb : 't',   // 수업 화면 도구 줄: 처음엔 위
     nobar: !!set0.nobar,   // 도구 줄 숨김 (빠른 도구 동그라미만 쓰기)
-    laser: /^laser[2-5]?$/.test(set0.laser) ? set0.laser : /^laser[2-5]?$/.test(set0.tool) ? set0.tool : 'laser',   // 레이저 버튼이 고를 레이저 종류
+    laser: /^laser[2-6]?$/.test(set0.laser) ? set0.laser : /^laser[2-6]?$/.test(set0.tool) ? set0.tool : 'laser',   // 레이저 버튼이 고를 레이저 종류
     stamp: 'o',
     penSeen: !!ls.get(K.pen, false),
     meta: null, pdf: null, pages: [], hist: [], redo: [],
@@ -133,6 +133,7 @@
     laser3: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-dasharray="1.5 2.5"/></svg>',
     smooth: '<svg viewBox="0 0 24 24"><path d="M3 20h6"/><path d="M9 20c4 0 4.5-7 7.5-10.5S20 4.5 21 4"/><circle cx="9" cy="20" r="1.2" fill="currentColor"/><circle cx="21" cy="4" r="1.2" fill="currentColor"/></svg>',
     laser5: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-width="1" stroke-dasharray="1.5 2.5"/></svg>',
+    laser6: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-width="1"/></svg>',
     laser4: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1M11 9.5L2.5 18M14.5 13L6 21.5"/></svg>',
     qbar: '<svg viewBox="0 0 24 24"><rect x="15" y="3" width="6" height="18" rx="3"/><path d="M3 7h8M3 12h8M3 17h8"/></svg>',
     pencil: '<svg viewBox="0 0 24 24"><path d="M5 19l1.2-4.4L16.4 4.4a1.8 1.8 0 012.6 0l.6.6a1.8 1.8 0 010 2.6L9.4 17.8z"/><path d="M14.6 6.2l3.2 3.2M5 19l4.4-1.2"/></svg>',
@@ -1140,7 +1141,7 @@
       ctx.shadowColor = 'rgba(255,30,50,.9)'; ctx.shadowBlur = 6 + 14 * a;
       ctx.strokeStyle = `rgba(255,40,55,${(a * 0.9).toFixed(3)})`; ctx.lineWidth = 3 + 5 * a; ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = `rgba(255,248,248,${a.toFixed(3)})`; ctx.lineWidth = 1 + 1.8 * a; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,248,248,${a.toFixed(3)})`; ctx.lineWidth = g.th ? 0.5 + 0.8 * a : 1 + 1.8 * a; ctx.stroke();
     }
     if (FX.head && FX.head.g) {
       const f = 0.85 + 0.15 * Math.sin(now / 40);
@@ -1525,12 +1526,12 @@
     const gh = (G.ruler || G.prot) ? guideHit(e.clientX, e.clientY, tool === 'draw' && (!byFinger || fingerDraws())) : null;
     if (gh && (gh.part === 'body' || gh.part === 'knob')) { startGuide(e, gh); return; }
     if (byFinger && !fingerDraws()) { startPan(e); return; }
-    if (tool === 'laser4') {
-      // 한번에 광선: 한 획을 통째로 모아 두었다가 다 같이 사라짐
-      const grp = { pts: [{ x: e.clientX, y: e.clientY }], end: 0 };
+    if (tool === 'laser4' || tool === 'laser6') {
+      // 한번에 광선: 한 획을 통째로 모아 두었다가 다 같이 사라짐 (laser6은 하얀 심이 가늘게)
+      const th = tool === 'laser6', grp = { pts: [{ x: e.clientX, y: e.clientY }], end: 0, th };
       FX.strokes.push(grp);
-      mode = 'act'; act = Object.assign(base, { k: 'laser', grp });
-      FX.head = { x: e.clientX, y: e.clientY, g: true }; fxKick();
+      mode = 'act'; act = Object.assign(base, { k: 'laser', grp, th });
+      FX.head = { x: e.clientX, y: e.clientY, g: true, th }; fxKick();
       return;
     }
     if (tool === 'point') { mode = 'act'; act = Object.assign(base, { k: 'point' }); return; }   // 따라다니기만: 아무것도 안 그림 (따라다니는 그림만)
@@ -2215,7 +2216,7 @@
     if (!o.v && Array.isArray(o.items) && o.items.join() === Q_OLD0) o.items = [];
     o.v = 2;
     // 레이저 네 가지 → 레이저 버튼 하나 (누르면 고른 레이저, 한 번 더 누르면 종류 고르기). 빈 즐겨찾기 칸은 뺌
-    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : /^laser[2-5]?$/.test(k) ? 'laserx' : k))].filter(k => Q_NAMES[k]) : Q0.items.slice();
+    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : /^laser[2-6]?$/.test(k) ? 'laserx' : k))].filter(k => Q_NAMES[k]) : Q0.items.slice();
     o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.show = !!o.show; delete o.fold;
     return o;
   })(ls.get(K.qbar, null));
@@ -2393,6 +2394,7 @@
     laser2: '긴 레이저: 광선검처럼 빛나는 꼬리가 더 오래 남아 반짝이다 사라져요. 필기는 남지 않아요.',
     laser3: '광선 레이저: 광선검처럼 빛나는 꼬리가 오래 남아 깜빡이다 사라져요. 별은 없어요. 필기는 남지 않아요.',
     laser5: '가는 광선: 광선 레이저와 같은데 가운데 하얀 심이 더 가늘어요. 필기는 남지 않아요.',
+    laser6: '한번에 가는 광선: 한번에 광선과 같은데 가운데 하얀 심이 더 가늘어요. 필기는 남지 않아요.',
     laser4: '한번에 광선: 펜을 떼고 1초 뒤, 그은 선 전체가 처음부터 끝까지 다 같이 서서히 사라져요. 필기는 남지 않아요.',
     cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
@@ -2401,8 +2403,8 @@
     clip: '오답 담기: 틀린 문제를 상자로 둘러요. 오답 노트에 그림으로 들어가요. 다 담았으면 펜을 고르세요.',
   };
   // 레이저는 버튼 하나: 누르면 고른 레이저, 레이저일 때 한 번 더 누르면 종류 고르기 창 (레이저·긴·광선·한번에 광선)
-  const LASERS = ['laser', 'laser2', 'laser3', 'laser5', 'laser4'], LASER_NAMES = { laser: '레이저', laser2: '긴 레이저', laser3: '광선 레이저', laser5: '가는 광선', laser4: '한번에 광선' };
-  const LASER_DESC = { laser: '빨간 꼬리가 잠깐 보였다 사라져요', laser2: '빛나는 꼬리가 오래 남아 반짝이다 사라져요', laser3: '빛나는 꼬리가 오래 남아요 (별 없음)', laser5: '광선 레이저와 같고 가운데 하얀 심이 더 가늘어요', laser4: '펜을 떼고 1초 뒤 선 전체가 함께 사라져요' };
+  const LASERS = ['laser', 'laser2', 'laser3', 'laser5', 'laser4', 'laser6'], LASER_NAMES = { laser: '레이저', laser2: '긴 레이저', laser3: '광선 레이저', laser5: '가는 광선', laser4: '한번에 광선', laser6: '한번에 가는 광선' };
+  const LASER_DESC = { laser: '빨간 꼬리가 잠깐 보였다 사라져요', laser2: '빛나는 꼬리가 오래 남아 반짝이다 사라져요', laser3: '빛나는 꼬리가 오래 남아요 (별 없음)', laser5: '광선 레이저와 같고 가운데 하얀 심이 더 가늘어요', laser4: '펜을 떼고 1초 뒤 선 전체가 함께 사라져요', laser6: '한번에 광선과 같고 가운데 하얀 심이 더 가늘어요' };
   function laserButton(showLabel) {
     const on = LASERS.includes(S.tool), tip = on ? ' · 한 번 더 누르면 종류 고르기' : '';
     return `<button class="tb" type="button" data-a="laser-x" aria-pressed="${on}" aria-label="${LASER_NAMES[S.laser]}${tip}" title="${LASER_NAMES[S.laser]}${tip}">${I[S.laser]}${showLabel ? `<span class="lbl">${LASER_NAMES[S.laser]}</span>` : ''}</button>`;
@@ -2597,7 +2599,7 @@
       case 'laser-x': if (LASERS.includes(S.tool)) openLaserPick(); else setTool(S.laser); break;
       case 'point': if (S.tool === 'point') openFollow(); else setTool('point'); break;
       case 'bar-toggle': toggleBar(); break;
-      case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'laser5': case 'cover': case 'text': case 'lasso': setTool(a); break;
+      case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'laser5': case 'laser6': case 'cover': case 'text': case 'lasso': setTool(a); break;
       case 'clip': setTool('draw'); break;
       case 'curtain': toggleCurtain(); break;
       case 'smooth':
