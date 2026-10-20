@@ -936,17 +936,22 @@
     P.push(R[R.length - 1]);
     const n = P.length;
     if (n < 3) return P;
-    // 2) 가우스 흐림으로 손떨림을 지움 (σ = 7칸 ≈ 화면 21px). 끝 바깥은 선을 끝점에 대해 뒤집어 이어 붙인 것으로 채워서
-    //    끝점은 펜 자리 그대로이고 끝 근처도 똑같이 부드러움. 펜 끝에서 21칸(≈63px)보다 먼 곳은 새 점이 와도 바뀌지 않음
-    //    → 그리는 동안 이미 그린 선이 움찔거리지 않음
-    const SIG = 7, RAD = 21, W = Array.from({ length: RAD + 1 }, (_, k) => Math.exp(-k * k / (2 * SIG * SIG)));
-    const at = k => k < 0 ? [2 * P[0][0] - P[Math.min(n - 1, -k)][0], 2 * P[0][1] - P[Math.min(n - 1, -k)][1]]
-      : k > n - 1 ? [2 * P[n - 1][0] - P[Math.max(0, 2 * (n - 1) - k)][0], 2 * P[n - 1][1] - P[Math.max(0, 2 * (n - 1) - k)][1]] : P[k];
-    const Q = P.map((q, i) => {
-      let x = 0, y = 0, s = 0;
-      for (let j = -RAD; j <= RAD; j++) { const w = W[Math.abs(j)], r = at(i + j); x += r[0] * w; y += r[1] * w; s += w; }
-      return [x / s, y / s];
-    });
+    // 2) 가우스 흐림으로 손떨림을 지움 (σ = 10칸 ≈ 화면 30px). 끝 바깥은 선을 끝점에 대해 뒤집어 이어 붙인 것으로 채워서
+    //    끝점은 펜 자리 그대로이고 끝 근처도 똑같이 부드러움.
+    //    흐림만 세게 하면 작은 호(뛰어 세기)가 쪼그라들어서, 한 번 더 흐린 것과의 차이만큼 되돌려 줌 (큰 모양은 살리고 떨림만 지움)
+    //    펜 끝에서 약 180px보다 먼 곳은 새 점이 와도 바뀌지 않음 → 그리는 동안 이미 그린 선이 움찔거리지 않음
+    const SIG = 10, RAD = 30, W = Array.from({ length: RAD + 1 }, (_, k) => Math.exp(-k * k / (2 * SIG * SIG)));
+    const gauss = X => {
+      const at = k => k < 0 ? [2 * X[0][0] - X[Math.min(n - 1, -k)][0], 2 * X[0][1] - X[Math.min(n - 1, -k)][1]]
+        : k > n - 1 ? [2 * X[n - 1][0] - X[Math.max(0, 2 * (n - 1) - k)][0], 2 * X[n - 1][1] - X[Math.max(0, 2 * (n - 1) - k)][1]] : X[k];
+      return X.map((q, i) => {
+        let x = 0, y = 0, s = 0;
+        for (let j = -RAD; j <= RAD; j++) { const w = W[Math.abs(j)], r = at(i + j); x += r[0] * w; y += r[1] * w; s += w; }
+        return [x / s, y / s];
+      });
+    };
+    const G1 = gauss(P), G2 = gauss(G1);
+    const Q = G1.map((q, i) => [2 * q[0] - G2[i][0], 2 * q[1] - G2[i][1]]);
     // 3) 가로·세로에 가까운 곳은 반듯하게: 방향이 8° 안이면 완전히 붙이고, 8°~14°에서는 서서히 풀어서 꺾임 없이 이어짐.
     //    붙이는 높이(가로)·자리(세로)는 그 반듯한 구간이 시작된 곳 기준 → 뒤에 점이 늘어도 앞부분은 그대로
     // 앞쪽(지나온 14칸 ≈ 42px)과 뒤쪽(갈 14칸) 방향이 둘 다 가로·세로여야 반듯하게 → 곧은 구간만. 호의 꼭대기처럼 잠깐 가로인 곳은 그대로 둥글게
