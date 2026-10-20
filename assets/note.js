@@ -920,12 +920,12 @@
     }
     return Vx;
   }
-  // ════════════════ 매끈 펜: 손 떨림을 걷어 내고, 가로·세로에 가까운 마디는 반듯하게, 나머지는 점 사이를 곡선으로 ════════════════
+  // ════════════════ 매끈 펜: 손 떨림을 부드럽게 걷어 내고, 가로·세로에 가까운 곳은 반듯하게 (그리는 동안 이미 그린 곳은 그대로) ════════════════
   function smoothFit(P0) {
     const R = P0.map(q => [q[0], q[1]]);
     if (R.length < 3) return R;
-    // 화면 4px 간격으로 고르게 다시 찍고 앞뒤 3점씩 평균 → 잔떨림을 지움 (처음·끝 점은 그대로)
-    const step = 4 / S.scale, P = [R[0]];
+    // 1) 화면 3px 간격으로 고르게 다시 찍음 (펜이 빠르든 느리든 같은 간격)
+    const step = 3 / S.scale, P = [R[0]];
     let acc = 0;
     for (let i = 1; i < R.length; i++) {
       const a = R[i - 1], b = R[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -934,39 +934,47 @@
       acc = (acc + d) % step;
     }
     P.push(R[R.length - 1]);
-    const W = 3, Q = P.map((q, i) => {
-      if (i === 0 || i === P.length - 1) return q;
-      const w = Math.min(W, i, P.length - 1 - i); let x = 0, y = 0;
-      for (let j = i - w; j <= i + w; j++) { x += P[j][0]; y += P[j][1]; }
-      return [x / (2 * w + 1), y / (2 * w + 1)];
+    const n = P.length;
+    if (n < 3) return P;
+    // 2) 가우스 흐림으로 손떨림을 지움 (σ = 7칸 ≈ 화면 21px). 끝 바깥은 선을 끝점에 대해 뒤집어 이어 붙인 것으로 채워서
+    //    끝점은 펜 자리 그대로이고 끝 근처도 똑같이 부드러움. 펜 끝에서 21칸(≈63px)보다 먼 곳은 새 점이 와도 바뀌지 않음
+    //    → 그리는 동안 이미 그린 선이 움찔거리지 않음
+    const SIG = 7, RAD = 21, W = Array.from({ length: RAD + 1 }, (_, k) => Math.exp(-k * k / (2 * SIG * SIG)));
+    const at = k => k < 0 ? [2 * P[0][0] - P[Math.min(n - 1, -k)][0], 2 * P[0][1] - P[Math.min(n - 1, -k)][1]]
+      : k > n - 1 ? [2 * P[n - 1][0] - P[Math.max(0, 2 * (n - 1) - k)][0], 2 * P[n - 1][1] - P[Math.max(0, 2 * (n - 1) - k)][1]] : P[k];
+    const Q = P.map((q, i) => {
+      let x = 0, y = 0, s = 0;
+      for (let j = -RAD; j <= RAD; j++) { const w = W[Math.abs(j)], r = at(i + j); x += r[0] * w; y += r[1] * w; s += w; }
+      return [x / s, y / s];
     });
-    const K = rdp(Q, 8 / S.scale);   // 화면에서 8px 안쪽의 흔들림은 무시하고 꺾이는 점만 남김
-    const n = K.length, straight = [];
-    for (let i = 1; i < n; i++) {
-      const a = K[i - 1], b = K[i], dx = b[0] - a[0], dy = b[1] - a[1], t = Math.abs(Math.atan2(dy, dx)) % (Math.PI / 2), off = Math.min(t, Math.PI / 2 - t);
-      // 가로·세로에서 8°도 안 기울었으면 반듯하게 (끝점을 맞춤)
-      if (off < 0.14) { K[i] = Math.abs(dx) > Math.abs(dy) ? [b[0], a[1]] : [a[0], b[1]]; straight[i - 1] = true; }
-      else straight[i - 1] = n === 2;
-    }
-    const len = i => Math.hypot(K[i + 1][0] - K[i][0], K[i + 1][1] - K[i][1]) || 1e-6;
-    const unit = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
-    // 점마다 곡선이 지나갈 방향: 옆이 반듯한 마디면 그 방향 그대로 (이음매가 꺾이지 않게)
-    const dir = K.map((q, j) => {
-      if (j > 0 && straight[j - 1]) return unit(q[0] - K[j - 1][0], q[1] - K[j - 1][1]);
-      if (j < n - 1 && straight[j]) return unit(K[j + 1][0] - q[0], K[j + 1][1] - q[1]);
-      const a = K[Math.max(0, j - 1)], b = K[Math.min(n - 1, j + 1)];
-      return unit(b[0] - a[0], b[1] - a[1]);
-    });
-    const out = [K[0]];
-    for (let i = 0; i < n - 1; i++) {
-      const a = K[i], b = K[i + 1];
-      if (straight[i]) { out.push(b); continue; }
-      const l = len(i), m0 = [dir[i][0] * l, dir[i][1] * l], m1 = [dir[i + 1][0] * l, dir[i + 1][1] * l];
-      const steps = Math.max(4, Math.ceil(l * S.scale / 4));
-      for (let k = 1; k <= steps; k++) {
-        const t = k / steps, t2 = t * t, t3 = t2 * t, h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
-        out.push([h00 * a[0] + h10 * m0[0] + h01 * b[0] + h11 * m1[0], h00 * a[1] + h10 * m0[1] + h01 * b[1] + h11 * m1[1]]);
-      }
+    // 3) 가로·세로에 가까운 곳은 반듯하게: 방향이 8° 안이면 완전히 붙이고, 8°~14°에서는 서서히 풀어서 꺾임 없이 이어짐.
+    //    붙이는 높이(가로)·자리(세로)는 그 반듯한 구간이 시작된 곳 기준 → 뒤에 점이 늘어도 앞부분은 그대로
+    // 앞쪽(지나온 14칸 ≈ 42px)과 뒤쪽(갈 14칸) 방향이 둘 다 가로·세로여야 반듯하게 → 곧은 구간만. 호의 꼭대기처럼 잠깐 가로인 곳은 그대로 둥글게
+    // 방향은 그 구간 점들 전체가 놓인 방향(주성분)으로 재서 손떨림에 흔들리지 않음
+    const dirOf = (i0, i1) => {
+      if (i1 - i0 < 8) return null;   // 8칸이 안 되면(끝 근처) 방향이 흔들려서 안 씀
+      let mx = 0, my = 0; for (let k = i0; k <= i1; k++) { mx += P[k][0]; my += P[k][1]; }
+      const m = i1 - i0 + 1; mx /= m; my /= m;
+      let sxx = 0, syy = 0, sxy = 0; for (let k = i0; k <= i1; k++) { const dx = P[k][0] - mx, dy = P[k][1] - my; sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+      return 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    };
+    const offOf = g => { const t = Math.abs(g) % (Math.PI / 2); return Math.min(t, Math.PI / 2 - t); };
+    const out = [];
+    let axis = null, ref = 0;
+    for (let i = 0; i < n; i++) {
+      const i0 = Math.max(0, i - 14), i1 = Math.min(n - 1, i + 14);
+      const back = dirOf(i0, i), fwd = dirOf(i, i1), all = dirOf(i0, i1);
+      const ang = all == null ? 0 : all, off = Math.max(back == null ? 0 : offOf(back), fwd == null ? 0 : offOf(fwd), offOf(ang));
+      const w = off < 0.14 ? 1 : off < 0.25 ? (0.25 - off) / 0.11 : 0;
+      const ax = Math.abs(Math.cos(ang)) >= Math.abs(Math.sin(ang)) ? 'h' : 'v';
+      const q = Q[i].slice();
+      if (w > 0) {
+        // 반듯한 구간이 시작되면 그 앞 10칸 손 위치의 평균 높이(가로)·자리(세로)에 붙임
+        if (axis !== ax) { axis = ax; const c = ax === 'h' ? 1 : 0; let t = 0; const j1 = Math.min(n - 1, i + 10); for (let k = i; k <= j1; k++) t += P[k][c]; ref = t / (j1 - i + 1); }
+        const s = w * w * (3 - 2 * w);   // 붙는 정도도 부드럽게
+        if (ax === 'h') q[1] += (ref - q[1]) * s; else q[0] += (ref - q[0]) * s;
+      } else axis = null;
+      out.push(q);
     }
     return out;
   }
