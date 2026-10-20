@@ -3242,6 +3242,8 @@
     const done = () => {
       if (!sheet && !grade) return;
       S.meta.sentAt = Date.now(); DB.put('meta', S.meta).catch(() => {});
+      // 학습지를 보냈다는 기록을 이레 서버로 (카카오로 로그인한 학생만)
+      if (sheet) try { if (window.IRAE_AUTH) window.IRAE_AUTH.send({ kind: 'sheet', ref: S.meta.sheet || S.meta.id, title: S.meta.name, data: { pages: S.pages.length, ink: S.pages.reduce((n, pg) => n + pg.ink.length, 0) } }); } catch (x) {}
     };
     const later = sheet || grade ? ' 카톡 채팅방의 + → 파일에서 보내 주세요.' : '';
     if (b.dataset.m === 'share') {

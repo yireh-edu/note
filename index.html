@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/note.css?v=202610200743">
-<link rel="preload" href="assets/note.js?v=202610200743" as="script">
+<link rel="stylesheet" href="assets/note.css?v=202610200858">
+<link rel="preload" href="assets/note.js?v=202610200858" as="script">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#3E9F7A">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/app-192.png">
@@ -21,30 +21,159 @@
 <meta name="robots" content="noindex, nofollow">
 <style>html.gated body>*:not(#gate){display:none !important}
 #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F6F8FB;z-index:9999;font-family:'IBM Plex Sans KR',system-ui,sans-serif;padding:16px}
-#gate form{background:#fff;border:1px solid #DDE3EA;border-radius:18px;padding:28px 24px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.06)}
-#gate h2{margin:0 0 6px;font-size:22px;color:#18212E}#gate p{margin:0 0 16px;color:#5B6675;font-size:15px}
-#gate input{width:100%;box-sizing:border-box;font-size:26px;letter-spacing:.3em;text-align:center;padding:10px;border:1.5px solid #C9D2DC;border-radius:12px;margin-bottom:12px}
-#gate button{width:100%;font-size:17px;padding:12px;border:0;border-radius:12px;background:#18212E;color:#fff;cursor:pointer}
-#gate .err{color:#C8392B;min-height:1.4em;margin:10px 0 0;font-size:14px}</style>
+#gate form,#irae-join .jc{background:#fff;border:1px solid #DDE3EA;border-radius:18px;padding:28px 24px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.06)}
+#gate h2,#irae-join h2{margin:0 0 6px;font-size:22px;color:#18212E}#gate p,#irae-join p{margin:0 0 16px;color:#5B6675;font-size:15px}
+#gate input,#irae-join input{width:100%;box-sizing:border-box;font-size:26px;letter-spacing:.3em;text-align:center;padding:10px;border:1.5px solid #C9D2DC;border-radius:12px;margin-bottom:12px}
+#gate button,#irae-join button{width:100%;font-size:17px;padding:12px;border:0;border-radius:12px;background:#18212E;color:#fff;cursor:pointer}
+#gate .err,#irae-join .err{color:#C8392B;min-height:1.4em;margin:10px 0 0;font-size:14px}
+#gate .kakao,#irae-join .kakao,.irae-acc .kakao{background:#FEE500;color:#191919;font-weight:700}
+#gate .or{display:flex;align-items:center;gap:10px;color:#8A94A3;font-size:13px;margin:16px 0}#gate .or:before,#gate .or:after{content:'';flex:1;border-top:1px solid #DDE3EA}
+#irae-join{position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,14,20,.45);font-family:'IBM Plex Sans KR',system-ui,sans-serif}
+#irae-join .later{background:transparent;color:#5B6675;font-size:15px;margin-top:6px}
+.irae-acc{display:flex;width:100%;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:13px;color:var(--muted,#5A6576)}
+.irae-acc img{width:20px;height:20px;border-radius:50%;object-fit:cover}
+.irae-acc button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;border:1px solid var(--line,#D6DEE8);background:transparent;color:var(--ink,#18212E);cursor:pointer}
+.irae-acc button.kakao{border-color:#FEE500}</style>
 <script>(function () {
-  var K = 'irae-gate', H = '519aa7ff';
-  try { if (localStorage.getItem(K) === H) return; } catch (e) {}
-  function hash(s) { var h = 0x811c9dc5; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); }
+  var K = 'irae-gate', H = '519aa7ff', SERVER = 'https://yireh-auth.yireh-edu.workers.dev';
+  var TK = 'irae-login', UK = 'irae-login-user', QK = 'irae-sync-q';
+  function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  // 점검용: 이 컴퓨터에서 띄운 서버로 바꿔 끼우기 (localhost 주소만)
+  var TS = get('irae-server-test') || ''; if (TS.indexOf('http://127.0.0.1:') === 0 || TS.indexOf('http://localhost:') === 0) SERVER = TS;
+  function set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  function getJ(k, f) { try { var v = JSON.parse(get(k)); return v == null ? f : v; } catch (e) { return f; } }
+  // 어느 앱인지: 주소의 첫 칸 (yireh-edu.github.io/home/… → home)
+  var seg = location.pathname.split('/')[1], APP = { home: 'home', math: 'math', english: 'english', note: 'note' }[seg] || window.IRAE_APP || 'home';
+
+  // 카카오에서 돌아온 경우: 주소 뒤 #irae-login=표 를 저장하고 주소는 깨끗하게
+  var fresh = false, loginErr = '';
+  (function () {
+    var m = /[#&]irae-login=([^&]+)/.exec(location.hash), e = /[#&]irae-login-error=([^&]+)/.exec(location.hash);
+    if (m) { set(TK, decodeURIComponent(m[1])); set(K, H); fresh = true; }
+    if (e) loginErr = decodeURIComponent(e[1]);
+    if (m || e) try { history.replaceState(null, '', location.pathname + location.search); } catch (x) {}
+  })();
+  function token() { return get(TK) || ''; }
+  function user() { return getJ(UK, null); }
+  function login() { location.href = SERVER + '/kakao/login?return=' + encodeURIComponent(location.href.split('#')[0]); }
+  function logout() { set(TK, null); set(UK, null); renderAcc(); }
+  function api(path, body) {
+    return fetch(SERVER + path, { method: body ? 'POST' : 'GET', headers: body ? { Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' } : { Authorization: 'Bearer ' + token() }, body: body ? JSON.stringify(body) : undefined, keepalive: !!body && JSON.stringify(body).length < 60000 })
+      .then(function (r) { if (r.status === 401) { set(TK, null); set(UK, null); renderAcc(); throw new Error('login'); } return r.json().then(function (j) { j._status = r.status; return j; }); });
+  }
+  function refresh() {
+    if (!token()) return Promise.resolve(null);
+    return api('/me').then(function (u) { if (u && u.uid) { set(UK, JSON.stringify({ uid: u.uid, name: u.name, pic: u.pic, classes: u.classes || [], role: u.role, at: Date.now() })); renderAcc(); } return u; });
+  }
+
+  // ── 기록: 기기에 모아 두었다가 로그인돼 있으면 보냄 ──
+  var flushing = false, flushT = 0;
+  function send(ev) {
+    if (!ev || !ev.kind) return;
+    var q = getJ(QK, []);
+    q.push({ app: ev.app || APP, kind: ev.kind, ref: String(ev.ref || ''), title: String(ev.title || ''), right: ev.right == null ? null : ev.right, total: ev.total == null ? null : ev.total, data: ev.data == null ? null : ev.data, at: Date.now() });
+    set(QK, JSON.stringify(q.slice(-300)));
+    clearTimeout(flushT); flushT = setTimeout(flush, 1200);
+  }
+  function flush() {
+    if (flushing || !token()) return;
+    var q = getJ(QK, []); if (!q.length) return;
+    var batch = q.slice(0, 30); flushing = true;
+    api('/events', { events: batch }).then(function (j) {
+      flushing = false;
+      if (j && j.ok) { set(QK, JSON.stringify(getJ(QK, []).slice(batch.length))); if (getJ(QK, []).length) setTimeout(flush, 300); }
+    }, function () { flushing = false; });
+  }
+  window.IRAE_AUTH = { server: SERVER, app: APP, token: token, user: user, login: login, logout: logout, refresh: refresh, send: send, flush: flush, join: join };
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
+
+  // ── 반 코드로 반 들어가기 (카카오로 처음 들어왔는데 반이 없을 때) ──
+  function join(force) {
+    var u = user();
+    if (!token() || (!force && u && u.classes && u.classes.length) || document.getElementById('irae-join')) return;
+    var w = document.createElement('div'); w.id = 'irae-join';
+    w.innerHTML = '<form class="jc"><h2>' + ((u && u.name) ? esc(u.name) + '님, 반에 들어가요' : '반에 들어가요') + '</h2><p>선생님께 받은 <b>반 코드(6자리)</b>를 넣어 주세요.<br>그러면 푼 문제와 숙제가 선생님께 보여요.</p>' +
+      '<input inputmode="numeric" autocomplete="off" maxlength="12" aria-label="반 코드"><button type="submit">반에 들어가기</button><p class="err" role="alert"></p><button type="button" class="later">나중에 할게요</button></form>';
+    document.body.appendChild(w);
+    var f = w.querySelector('form'), inp = w.querySelector('input'), err = w.querySelector('.err');
+    w.querySelector('.later').onclick = function () { w.remove(); };
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      api('/join', { code: inp.value.trim() }).then(function (j) {
+        if (j.ok) { w.remove(); refresh(); toastMsg('‘' + j['class'].name + '’ 반에 들어갔어요.'); }
+        else { err.textContent = '반 코드가 달라요. 선생님께 다시 확인해 주세요.'; inp.value = ''; inp.focus(); }
+      }, function () { err.textContent = '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.'; });
+    });
+    inp.focus();
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function toastMsg(t) {
+    var d = document.createElement('div'); d.textContent = t;
+    d.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#18212E;color:#fff;padding:10px 16px;border-radius:12px;z-index:9600;font:15px system-ui,sans-serif';
+    document.body.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
+  }
+
+  // ── 페이지 아래: 로그인 상태 ──
+  function renderAcc() {
+    var fs = document.querySelectorAll('footer'); if (!fs.length) return false;
+    for (var i = 0; i < fs.length; i++) {
+      var f = fs[i], el = f.querySelector('.irae-acc');
+      if (!el) { el = document.createElement('div'); el.className = 'irae-acc'; f.appendChild(el); }
+      var u = user();
+      if (token()) {
+        el.innerHTML = (u && u.pic ? '<img src="' + esc(u.pic) + '" alt="">' : '') + '<span>' + esc((u && u.name) || '카카오') + '님' + (u && u.classes && u.classes.length ? ' · ' + esc(u.classes.map(function (c) { return c.name; }).join(', ')) : '') + '</span>' +
+          (u && u.classes && !u.classes.length ? '<button type="button" data-acc="join">반 코드 넣기</button>' : '') + '<button type="button" data-acc="out">로그아웃</button>';
+      } else el.innerHTML = '<button type="button" class="kakao" data-acc="in">카카오로 시작하기</button><span>로그인하면 푼 문제가 선생님께 보여요</span>';
+    }
+    return true;
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-acc]'); if (!b) return;
+    e.stopPropagation();
+    var a = b.getAttribute('data-acc');
+    if (a === 'in') login(); else if (a === 'join') join(true); else if (a === 'out' && confirm('로그아웃할까요? (이 기기의 기록은 그대로 남아요)')) logout();
+  }, true);
+  function watchFooter() {
+    var tries = 0;
+    if (renderAcc()) return;
+    var mo = new MutationObserver(function () { if (renderAcc() || ++tries > 400) mo.disconnect(); });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  // 퀴즈 화면은 footer를 다시 그리기도 해서, 다시 생기면 다시 붙임
+  function keepFooter() { new MutationObserver(function () { var f = document.querySelector('footer'); if (f && !f.querySelector('.irae-acc')) renderAcc(); }).observe(document.body, { childList: true, subtree: true }); }
+
+  function afterLoad() {
+    watchFooter(); keepFooter();
+    if (loginErr) toastMsg('카카오 로그인이 안 됐어요. 다시 해 주세요.');
+    if (token()) {
+      var u = user();
+      // 막 로그인했거나 하루가 지났으면 반·이름을 다시 받아 옴
+      var p = (fresh || !u || Date.now() - (u.at || 0) > 864e5) ? refresh() : Promise.resolve(u);
+      p.then(function () { if (fresh) join(); flush(); }, function () {});
+    }
+  }
+
+  // ── 입구 ──
+  var passed = get(K) === H || !!token();
+  if (passed) { if (document.body) afterLoad(); else document.addEventListener('DOMContentLoaded', afterLoad); return; }
+  function hashS(s) { var h = 0x811c9dc5; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); }
   document.documentElement.classList.add('gated');
   function show() {
     var g = document.createElement('div'); g.id = 'gate';
-    g.innerHTML = '<form><h2>이레</h2><p>선생님께 받은 반 코드를 넣어 주세요.</p>' +
-      '<input type="password" inputmode="numeric" autocomplete="off" aria-label="반 코드" maxlength="12"><button type="submit">들어가기</button><p class="err" role="alert"></p></form>';
+    g.innerHTML = '<form><h2>이레</h2><p>카카오로 시작하거나<br>선생님께 받은 반 코드를 넣어 주세요.</p>' +
+      '<button type="button" class="kakao">카카오로 시작하기</button><div class="or">또는</div>' +
+      '<input type="password" inputmode="numeric" autocomplete="off" aria-label="반 코드" maxlength="12"><button type="submit">반 코드로 들어가기</button><p class="err" role="alert">' + (loginErr ? '카카오 로그인이 안 됐어요. 다시 해 주세요.' : '') + '</p></form>';
     document.body.appendChild(g);
     var f = g.querySelector('form'), inp = g.querySelector('input'), err = g.querySelector('.err');
+    g.querySelector('.kakao').onclick = login;
     f.addEventListener('submit', function (e) {
       e.preventDefault();
-      if (hash('irae-gate:' + inp.value.trim()) === H) {
-        try { localStorage.setItem(K, H); } catch (x) {}
+      if (hashS('irae-gate:' + inp.value.trim()) === H) {
+        set(K, H);
         g.remove(); document.documentElement.classList.remove('gated');
+        afterLoad();
       } else { err.textContent = '코드가 달라요. 다시 넣어 주세요.'; inp.value = ''; inp.focus(); }
     });
-    inp.focus();
   }
   if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
 })();</script>
@@ -238,7 +367,7 @@
 </head>
 <body>
 <div id="app"></div>
-<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610200743","alwaysSheets":true};</script>
+<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610200858","alwaysSheets":true};</script>
 <script>
 // 학습지 목록은 선생님이 자주 바꾸므로 열 때마다 새로 받음 (?t=지금 시각)
 (function () {
@@ -246,7 +375,7 @@
   s.src = 'sheets.js?t=' + Date.now();
   s.onload = s.onerror = function () {
     var app = document.createElement('script');
-    app.src = 'assets/note.js?v=202610200743';
+    app.src = 'assets/note.js?v=202610200858';
     document.body.appendChild(app);
   };
   document.body.appendChild(s);
