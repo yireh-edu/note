@@ -93,6 +93,7 @@
     finger: set0.finger || 'auto',   // auto(펜을 쓰면 이동) | draw | pan
     eraseMode: set0.eraseMode === 'part' ? 'part' : 'stroke',   // 선 통째로 | 문지른 부분만
     snap: set0.snap !== false,       // 긋고 멈추면 반듯한 도형으로
+    smooth: !!set0.smooth,           // 매끈 펜: 그리는 동안 가로·세로는 반듯하게, 비스듬한 선은 매끈한 곡선으로
     follow: typeof set0.follow === 'string' ? set0.follow : 'none',   // 펜 끝을 따라다니는 그림 (FOLLOW)
     pb: PB_SIDES[set0.pb] ? set0.pb : 't',   // 수업 화면 도구 줄: 처음엔 위
     nobar: !!set0.nobar,   // 도구 줄 숨김 (빠른 도구 동그라미만 쓰기)
@@ -102,7 +103,7 @@
     meta: null, pdf: null, pages: [], hist: [], redo: [],
     zoom: 1, scale: 1, cur: 0, present: false, view: 'home',
   };
-  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap, follow: S.follow, pb: S.pb, nobar: S.nobar, laser: S.laser });
+  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap, smooth: S.smooth, follow: S.follow, pb: S.pb, nobar: S.nobar, laser: S.laser });
   const fingerDraws = () => S.finger === 'draw' || (S.finger === 'auto' && !S.penSeen);
   const isGrade = () => !!(S.meta && S.meta.kind === 'grade');
 
@@ -130,6 +131,7 @@
     laser: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/></svg>',
     laser2: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1" /><path d="M3 15c1.5-2 3-2 4.5-.5M2.5 11c2-3 4.5-3.5 6.5-2" stroke-dasharray="2 2"/></svg>',
     laser3: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-dasharray="1.5 2.5"/></svg>',
+    smooth: '<svg viewBox="0 0 24 24"><path d="M3 20h6"/><path d="M9 20c4 0 4.5-7 7.5-10.5S20 4.5 21 4"/><circle cx="9" cy="20" r="1.2" fill="currentColor"/><circle cx="21" cy="4" r="1.2" fill="currentColor"/></svg>',
     laser5: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1"/><path d="M11 9.5L2.5 18M14.5 13L6 21.5" stroke-width="1" stroke-dasharray="1.5 2.5"/></svg>',
     laser4: '<svg viewBox="0 0 24 24"><circle cx="16.5" cy="7.5" r="2.5"/><path d="M14.7 9.3L4 20M16.5 2.5v1.5M21.5 7.5H20M20 4l-1 1M11 9.5L2.5 18M14.5 13L6 21.5"/></svg>',
     qbar: '<svg viewBox="0 0 24 24"><rect x="15" y="3" width="6" height="18" rx="3"/><path d="M3 7h8M3 12h8M3 17h8"/></svg>',
@@ -917,6 +919,101 @@
     }
     return Vx;
   }
+  // ════════════════ 매끈 펜: 손 떨림을 걷어 내고, 가로·세로에 가까운 마디는 반듯하게, 나머지는 점 사이를 곡선으로 ════════════════
+  function smoothFit(P0) {
+    const R = P0.map(q => [q[0], q[1]]);
+    if (R.length < 3) return R;
+    // 화면 4px 간격으로 고르게 다시 찍고 앞뒤 3점씩 평균 → 잔떨림을 지움 (처음·끝 점은 그대로)
+    const step = 4 / S.scale, P = [R[0]];
+    let acc = 0;
+    for (let i = 1; i < R.length; i++) {
+      const a = R[i - 1], b = R[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      let t = step - acc;
+      while (t <= d) { P.push([a[0] + (b[0] - a[0]) * t / d, a[1] + (b[1] - a[1]) * t / d]); t += step; }
+      acc = (acc + d) % step;
+    }
+    P.push(R[R.length - 1]);
+    const W = 3, Q = P.map((q, i) => {
+      if (i === 0 || i === P.length - 1) return q;
+      const w = Math.min(W, i, P.length - 1 - i); let x = 0, y = 0;
+      for (let j = i - w; j <= i + w; j++) { x += P[j][0]; y += P[j][1]; }
+      return [x / (2 * w + 1), y / (2 * w + 1)];
+    });
+    const K = rdp(Q, 8 / S.scale);   // 화면에서 8px 안쪽의 흔들림은 무시하고 꺾이는 점만 남김
+    const n = K.length, straight = [];
+    for (let i = 1; i < n; i++) {
+      const a = K[i - 1], b = K[i], dx = b[0] - a[0], dy = b[1] - a[1], t = Math.abs(Math.atan2(dy, dx)) % (Math.PI / 2), off = Math.min(t, Math.PI / 2 - t);
+      // 가로·세로에서 8°도 안 기울었으면 반듯하게 (끝점을 맞춤)
+      if (off < 0.14) { K[i] = Math.abs(dx) > Math.abs(dy) ? [b[0], a[1]] : [a[0], b[1]]; straight[i - 1] = true; }
+      else straight[i - 1] = n === 2;
+    }
+    const len = i => Math.hypot(K[i + 1][0] - K[i][0], K[i + 1][1] - K[i][1]) || 1e-6;
+    const unit = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+    // 점마다 곡선이 지나갈 방향: 옆이 반듯한 마디면 그 방향 그대로 (이음매가 꺾이지 않게)
+    const dir = K.map((q, j) => {
+      if (j > 0 && straight[j - 1]) return unit(q[0] - K[j - 1][0], q[1] - K[j - 1][1]);
+      if (j < n - 1 && straight[j]) return unit(K[j + 1][0] - q[0], K[j + 1][1] - q[1]);
+      const a = K[Math.max(0, j - 1)], b = K[Math.min(n - 1, j + 1)];
+      return unit(b[0] - a[0], b[1] - a[1]);
+    });
+    const out = [K[0]];
+    for (let i = 0; i < n - 1; i++) {
+      const a = K[i], b = K[i + 1];
+      if (straight[i]) { out.push(b); continue; }
+      const l = len(i), m0 = [dir[i][0] * l, dir[i][1] * l], m1 = [dir[i + 1][0] * l, dir[i + 1][1] * l];
+      const steps = Math.max(4, Math.ceil(l * S.scale / 4));
+      for (let k = 1; k <= steps; k++) {
+        const t = k / steps, t2 = t * t, t3 = t2 * t, h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+        out.push([h00 * a[0] + h10 * m0[0] + h01 * b[0] + h11 * m1[0], h00 * a[1] + h10 * m0[1] + h01 * b[1] + h11 * m1[1]]);
+      }
+    }
+    return out;
+  }
+  // 매끈 펜 선: 맞춘 점들로 된 반듯한 선(sh)으로 저장 — 화면과 PDF가 같은 모양
+  function smoothStroke(s) {
+    const o = Object.assign({}, s, { p: smoothFit(s.p).map(q => [r2(q[0]), r2(q[1]), 0.5]), sh: 1 });
+    delete o.pr;
+    return o;
+  }
+  // 꼭짓점 정리: 거의 펴진(155°보다 큰) 꼭짓점은 빼서 모서리가 둥글게 그려진 세모·네모도 알아봄
+  function pruneFlat(Vx) {
+    let V = Vx.slice(), changed = true;
+    while (changed && V.length > 3) {
+      changed = false;
+      for (let i = 0; i < V.length; i++) {
+        const a = V[(i + V.length - 1) % V.length], b = V[i], c = V[(i + 1) % V.length];
+        const u = unitV(a, b), v = unitV(b, c);
+        if (u[0] * v[0] + u[1] * v[1] > Math.cos(Math.PI - 155 / 180 * Math.PI)) { V.splice(i, 1); changed = true; break; }
+      }
+    }
+    return V;
+  }
+  const unitV = (a, b) => { const x = b[0] - a[0], y = b[1] - a[1], l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+  // 별: 한 번에 그린 오각별(꼭짓점 5개를 하나 건너 이음) 또는 둘레를 따라 그린 별(꼭짓점 10개, 안·밖 번갈아)
+  function starFrom(Vx, D) {
+    const cx = Vx.reduce((t, v) => t + v[0], 0) / Vx.length, cy = Vx.reduce((t, v) => t + v[1], 0) / Vx.length;
+    const ang = Vx.map(v => Math.atan2(v[1] - cy, v[0] - cx)), rad = Vx.map(v => Math.hypot(v[0] - cx, v[1] - cy));
+    const wrap = d => Math.atan2(Math.sin(d), Math.cos(d));
+    const steps = ang.slice(1).map((a, i) => wrap(a - ang[i]));
+    const regular = (R, r, a0, sign) => Array.from({ length: 11 }, (_, k) => { const rr = k % 2 ? r : R, t = a0 + sign * k * Math.PI / 5; return [cx + rr * Math.cos(t), cy + rr * Math.sin(t)]; });
+    if (Vx.length === 5) {
+      const mean = steps.reduce((t, d) => t + Math.abs(d), 0) / steps.length;
+      if (mean < 2.0 || mean > 2.9 || !steps.every(d => Math.sign(d) === Math.sign(steps[0]))) return null;
+      const R = rad.reduce((t, x) => t + x, 0) / 5;
+      if (rad.some(x => Math.abs(x - R) > 0.35 * R)) return null;
+      // 오각별을 한 붓으로: 꼭짓점을 144°씩 돌며 이음
+      const sign = Math.sign(steps[0]);
+      return Array.from({ length: 6 }, (_, k) => { const t = ang[0] + sign * k * 4 * Math.PI / 5; return [cx + R * Math.cos(t), cy + R * Math.sin(t)]; });
+    }
+    if (Vx.length === 10) {
+      const odd = rad.filter((_, i) => i % 2), even = rad.filter((_, i) => i % 2 === 0);
+      const mo = odd.reduce((t, x) => t + x, 0) / 5, me = even.reduce((t, x) => t + x, 0) / 5;
+      const [R, r, outer0] = me > mo ? [me, mo, 0] : [mo, me, 1];
+      if (r > 0.75 * R || !steps.every(d => Math.sign(d) === Math.sign(steps[0]))) return null;
+      return regular(R, R * 0.42, ang[outer0] - (outer0 ? Math.sign(steps[0]) * Math.PI / 5 : 0), Math.sign(steps[0]));
+    }
+    return null;
+  }
   function recognize(P0) {
     const P = P0.map(q => [q[0], q[1]]);
     if (P.length < 3) return null;
@@ -933,9 +1030,15 @@
       return { type: 'line', p: [a, e] };
     }
     if (ab < 0.3 * D) {
-      // 삼각형·사각형
-      const Vx = closedCorners(P, 0.07 * D);
-      if ((Vx.length === 3 || Vx.length === 4) && polyErr(P, Vx, true) / D < 0.035) {
+      // 별 (꼭짓점 5개를 건너뛰며 그린 것 / 둘레 10개)
+      const V0 = closedCorners(P, 0.06 * D);
+      if ((V0.length === 5 || V0.length === 10) && polyErr(P, V0, true) / D < 0.05) {
+        const st = starFrom(V0, D);
+        if (st) return { type: 'star', p: st };
+      }
+      // 삼각형·사각형 (모서리를 둥글게 그려 생긴 덜 꺾인 꼭짓점은 뺌)
+      const Vx = pruneFlat(closedCorners(P, 0.07 * D));
+      if ((Vx.length === 3 || Vx.length === 4) && polyErr(P, Vx, true) / D < 0.05) {
         let poly = Vx;
         const axis = Vx.length === 4 && Vx.every((v, i) => { const w = Vx[(i + 1) % 4], t = Math.abs(Math.atan2(w[1] - v[1], w[0] - v[0])) % (Math.PI / 2); return Math.min(t, Math.PI / 2 - t) < 0.21; });
         if (axis) poly = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
@@ -1468,7 +1571,7 @@
     const s = { k: S.pt === 'hl' ? 'hl' : 'pen', c: S.col[S.pt], w: SIZES[S.pt][S.size], p: [[...pt, pr]] };
     if (S.pt === 'pencil' || S.pt === 'nib' || S.pt === 'chalk') s.t = S.pt;
     if (e.pointerType === 'pen' && S.pt !== 'hl') s.pr = 1;
-    act = Object.assign(base, { k: 'draw', pg, s, kk: liveOn(pg), r: hit.r, smooth: pr, hx: e.clientX, hy: e.clientY });
+    act = Object.assign(base, { k: 'draw', pg, s, kk: liveOn(pg), r: hit.r, smooth: pr, hx: e.clientX, hy: e.clientY, sm: S.smooth });
     if (gh && (gh.part === 'edge' || gh.part === 'arc')) {
       // 자·각도기를 따라 긋기: 반듯한 선(도형과 같은 방식으로 저장)
       act.guide = gh; act.snapped = 'guide';
@@ -1692,6 +1795,7 @@
   function paintLive() {
     if (!act) return;
     const ctx = liveCanvas.getContext('2d');
+    if (act.k === 'draw' && act.sm && !act.snapped) { ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height); paintStroke(ctx, smoothStroke(act.s), act.kk); return; }
     if (act.k === 'draw') { paintLiveStroke(ctx, act); return; }
     ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
     if (act.k === 'lasso') {
@@ -1736,6 +1840,7 @@
       const [bx0, by0, bx1, by1] = bounds(Object.assign({}, s, { w: 0 }));
       if ((bx1 - bx0) * S.scale < 8 && (by1 - by0) * S.scale < 8 && toggleCoverAt(pg, s.p[0])) return;
     }
+    if (a.sm && !a.snapped && s.p.length > 2) { const o = smoothStroke(s); s.p = o.p; s.sh = 1; delete s.pr; a.snapped = 'smooth'; }
     if (!a.snapped) s.p = s.p.map(([x, y, pr]) => [r2(x), r2(y), r2(pr)]);
     pg.ink.push(s);
     record({ t: 'add', items: [{ pg, s }] });
@@ -2090,7 +2195,7 @@
   const Q_ITEMS = [
     ...PT_KEYS.map(t => ['t' + t, PTYPES[t]]), ['sw0', '색 칸 1'], ['sw1', '색 칸 2'], ['sw2', '색 칸 3'], ['penpanel', '펜·색 고르기'],
     ['erase', '지우개'], ['size', '굵기'],
-    ['laserx', '레이저'], ['point', '따라다니기만'],
+    ['smooth', '매끈 펜'], ['laserx', '레이저'], ['point', '따라다니기만'],
     ['cover', '가림막'], ['curtain', '커튼'], ['text', '글자'], ['lasso', '올가미'], ['ruler', '자'], ['prot', '각도기'],
     ['undo', '되돌리기'], ['redo', '다시 하기'], ['thumbs', '쪽 목록'], ['timer', '타이머'],
   ];
@@ -2119,6 +2224,7 @@
     if (k === 'size') return `<button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${[2, 4, 7][S.size]}px"></span></button>`;
     if (lz[k]) return tb(k, I[k], Q_NAMES[k], S.tool === k, false);
     if (k === 'ruler' || k === 'prot') return tb(k, I[k], Q_NAMES[k], !!G[k], false);
+    if (k === 'smooth') return tb('smooth', I.smooth, '매끈 펜', S.smooth, false);
     const icon = { curtain: I.curtain, undo: I.undo, redo: I.redo, thumbs: I.grid, timer: I.timer }[k];
     return tb(k, icon, Q_NAMES[k], null, false);
   }
@@ -2229,6 +2335,7 @@
       ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point', L)}
       <span class="sep"></span>
       ${ptButtons(false)}
+      ${tb('smooth', I.smooth, '매끈 펜', S.smooth, L)}
       <span class="sep"></span>
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', L)}
       ${tb('lasso', I.lasso, '올가미', S.tool === 'lasso', L)}
@@ -2486,6 +2593,12 @@
       case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'laser5': case 'cover': case 'text': case 'lasso': setTool(a); break;
       case 'clip': setTool('draw'); break;
       case 'curtain': toggleCurtain(); break;
+      case 'smooth':
+        S.smooth = !S.smooth;
+        if (S.smooth && S.tool !== 'draw') S.tool = 'draw';
+        saveSettings(); renderTools();
+        toast(S.smooth ? '매끈 펜: 가로·세로는 반듯하게, 비스듬한 선은 매끈한 곡선으로 그려져요. (지금 고른 펜·색·굵기 그대로)' : '매끈 펜을 껐어요. 손으로 그린 그대로 써져요.', 3600);
+        break;
       case 'penpanel': openPenPanel(); break;
       case 'qbar': toggleQbar(); break;
       case 'ruler': case 'prot': toggleGuide(a); break;
@@ -2568,7 +2681,7 @@
       ${S.meta.kind !== 'wrong' ? '<button class="btn ghost wide" type="button" data-m="clip">오답 노트에 담기 <small>(틀린 문제를 상자로)</small></button>' : '<p class="hint">담은 문제 옆 빈 곳에 다시 풀어 봐요. [PDF로 저장]으로 모아서 인쇄할 수도 있어요.</p>'}
       <p class="mh">쓰기</p>
       <button class="btn ghost wide" type="button" data-m="snap">도형 맞춤: <b>${S.snap ? '켜짐' : '꺼짐'}</b></button>
-      <p class="hint">선을 긋고 펜을 떼지 않은 채 잠깐 멈추면 반듯한 직선·원·삼각형·사각형으로 바뀌어요.</p>
+      <p class="hint">선을 긋고 펜을 떼지 않은 채 잠깐 멈추면 반듯한 직선·원·삼각형·사각형·별로 바뀌어요.</p>
       <button class="btn ghost wide" type="button" data-m="emode">지우개: <b>${S.eraseMode === 'part' ? '문지른 부분만' : '선 통째로'}</b></button>
       ${ls.get(K.err, []).length ? `<button class="btn ghost wide" type="button" data-m="errlog">문제 기록 <small>(${ls.get(K.err, []).length}건 · 고칠 때 필요해요)</small></button>` : ''}
       <button class="btn ghost wide${armed === 'clear' ? ' armed' : ''}" type="button" data-m="clear">${armed === 'clear' ? `한 번 더 누르면 ${n}쪽 필기를 모두 지워요` : `이 쪽 필기 모두 지우기 (${n}쪽)`}</button>
@@ -3444,6 +3557,6 @@
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, ptrs, paintItem, goPage, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, ptrs, paintItem, smoothFit, goPage, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
