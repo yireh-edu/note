@@ -82,7 +82,11 @@
     if (Number.isInteger(f.pen) && OLD_PENS[f.pen]) return { t: OLD_PENS[f.pen][0], c: OLD_PENS[f.pen][1], size: f.size };
     return PTYPES[f.t] && isCol(f.c) ? { t: f.t, c: f.c, size: f.size } : null;
   };
-  const FAV = (a => { const v = Array.isArray(a) && a.length === 3 ? a.map(favFix) : []; return v.length === 3 && v.every(Boolean) ? v : FAV0.map(f => Object.assign({}, f)); })(ls.get(K.fav, null));
+  // 즐겨찾기 펜 3칸: 넣기 전에는 비어 있고(null) 화면에 안 보임. 예전 기본값 그대로인 칸(손대지 않은 것)도 비움
+  const FAV = (a => {
+    const v = Array.isArray(a) && a.length === 3 ? a.map(favFix) : [null, null, null];
+    return v.map((f, i) => f && !(f.t === FAV0[i].t && f.c === FAV0[i].c && f.size === FAV0[i].size) ? f : null);
+  })(ls.get(K.fav, null));
   // 펜 설정: 종류(pt), 종류마다 지금 색(col)과 색 칸 3개(sw)
   const pen0 = (() => {
     const old = Number.isInteger(set0.pen) && OLD_PENS[set0.pen];
@@ -103,12 +107,13 @@
     follow: typeof set0.follow === 'string' ? set0.follow : 'none',   // 펜 끝을 따라다니는 그림 (FOLLOW)
     pb: PB_SIDES[set0.pb] ? set0.pb : 't',   // 수업 화면 도구 줄: 처음엔 위
     nobar: !!set0.nobar,   // 도구 줄 숨김 (빠른 도구 동그라미만 쓰기)
+    laser: /^laser[234]?$/.test(set0.laser) ? set0.laser : /^laser[234]?$/.test(set0.tool) ? set0.tool : 'laser',   // 레이저 버튼이 고를 레이저 종류
     stamp: 'o',
     penSeen: !!ls.get(K.pen, false),
     meta: null, pdf: null, pages: [], hist: [], redo: [],
     zoom: 1, scale: 1, cur: 0, present: false, view: 'home',
   };
-  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap, follow: S.follow, pb: S.pb, nobar: S.nobar });
+  const saveSettings = () => ls.set(K.set, { tool: TOOLS.includes(S.tool) ? S.tool : 'draw', pt: S.pt, col: S.col, sw: S.sw, size: S.size, finger: S.finger, eraseMode: S.eraseMode, snap: S.snap, follow: S.follow, pb: S.pb, nobar: S.nobar, laser: S.laser });
   const fingerDraws = () => S.finger === 'draw' || (S.finger === 'auto' && !S.penSeen);
   const isGrade = () => !!(S.meta && S.meta.kind === 'grade');
 
@@ -2055,8 +2060,10 @@
   function penButtons() { return ptButtons(false) + swButtons(); }
   // 즐겨찾기 펜 3칸: 누르면 그 색·굵기로, 길게 누르면 지금 펜을 저장
   function favButtons() { return FAV.map((f, n) => favButton(n)).join(''); }
+  const favGroup = after => { const h = favButtons(); return h ? h + after : ''; };   // 넣은 즐겨찾기가 있을 때만 (구분선 포함)
   function favButton(n) {
-    const f = FAV[n], d = [9, 13, 18][f.size], lb = penLabel(f.t, f.c);
+    const f = FAV[n]; if (!f) return '';
+    const d = [9, 13, 18][f.size], lb = penLabel(f.t, f.c);
     return `<button class="tb fav" type="button" data-fav="${n}" aria-pressed="${S.tool === 'draw' && S.pt === f.t && S.col[f.t] === f.c && S.size === f.size}" aria-label="즐겨찾기 ${n + 1}: ${lb} ${SIZE_NAMES[f.size]} (길게 누르면 지금 펜 저장)" title="즐겨찾기 ${n + 1}: ${lb} · 길게 누르면 지금 펜 저장">
       <span class="fv"><span class="dot${f.t === 'hl' ? ' hl' : ''}${rough(f) ? ' pc' : ''}" style="background:${f.c};width:${d}px;height:${d}px"></span></span><sup>${n + 1}</sup></button>`;
   }
@@ -2070,16 +2077,20 @@
     ['fav0', '즐겨찾기 1'], ['fav1', '즐겨찾기 2'], ['fav2', '즐겨찾기 3'],
     ...PT_KEYS.map(t => ['t' + t, PTYPES[t]]), ['sw0', '색 칸 1'], ['sw1', '색 칸 2'], ['sw2', '색 칸 3'], ['penpanel', '펜·색 고르기'],
     ['erase', '지우개'], ['size', '굵기'],
-    ['laser', '레이저'], ['laser2', '긴 레이저'], ['laser3', '광선 레이저'], ['laser4', '한번에 광선'], ['point', '따라다니기만'],
+    ['laserx', '레이저'], ['point', '따라다니기만'],
     ['cover', '가림막'], ['curtain', '커튼'], ['text', '글자'], ['lasso', '올가미'], ['ruler', '자'], ['prot', '각도기'],
     ['undo', '되돌리기'], ['redo', '다시 하기'], ['thumbs', '쪽 목록'], ['timer', '타이머'],
   ];
   const Q_NAMES = Object.fromEntries(Q_ITEMS);
-  const Q0 = { items: ['fav0', 'fav1', 'fav2', 'laser4', 'erase', 'undo'], side: 'r', y: 0.3, show: false };   // 처음엔 숨김: [빠른 도구] 버튼으로 켬   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
+  const Q0 = { items: [], side: 'r', y: 0.3, show: false };   // 넣기 전에는 아무것도 없음 (넣은 것만 보임)
+  const Q_OLD0 = 'fav0,fav1,fav2,laser4,erase,undo';   // 예전 기본 목록: 손대지 않았으면 비움   // 처음엔 숨김: [빠른 도구] 버튼으로 켬   // y: 손잡이 높이(비율) — 접고 펴도 손잡이는 제자리
   const Q = (q => {
     const o = Object.assign({}, Q0, q && typeof q === 'object' ? q : {});
     // 예전 펜 칸(pen0~4) → 볼펜·형광펜
-    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : k))].filter(k => Q_NAMES[k]) : Q0.items.slice();
+    if (!o.v && Array.isArray(o.items) && o.items.join() === Q_OLD0) o.items = [];
+    o.v = 2;
+    // 레이저 네 가지 → 레이저 버튼 하나 (누르면 고른 레이저, 한 번 더 누르면 종류 고르기). 빈 즐겨찾기 칸은 뺌
+    o.items = Array.isArray(o.items) ? [...new Set(o.items.map(k => /^pen[0-2]$/.test(k) ? 'tpen' : /^pen[34]$/.test(k) ? 'thl' : /^laser[234]?$/.test(k) ? 'laserx' : k))].filter(k => Q_NAMES[k] && !(/^fav\d$/.test(k) && !FAV[Number(k[3])])) : Q0.items.slice();
     o.side = o.side === 'l' ? 'l' : 'r'; o.y = clamp(Number.isFinite(Number(o.y)) ? Number(o.y) : 0.3, 0, 1); o.show = !!o.show; delete o.fold;
     return o;
   })(ls.get(K.qbar, null));
@@ -2090,7 +2101,8 @@
     if (/^sw\d$/.test(k)) return swButton(Number(k[2]));
     if (k === 'penpanel') return tb('penpanel', I.palette, '펜·색 고르기', null, false);
     if (k === 'point') return tb('point', pointIcon(), Q_NAMES[k], S.tool === 'point', false);
-    const lz = { laser: 'laser', laser2: 'laser2', laser3: 'laser3', laser4: 'laser4', cover: 'cover', text: 'text', lasso: 'lasso' };
+    if (k === 'laserx') return laserButton(false);
+    const lz = { cover: 'cover', text: 'text', lasso: 'lasso' };
     if (k === 'erase') return tb('erase', I.erase, S.eraseMode === 'part' ? '부분 지우개' : '지우개', S.tool === 'erase', false);
     if (k === 'size') return `<button class="tb" type="button" data-a="size" title="굵기: ${SIZE_NAMES[S.size]}" aria-label="굵기: ${SIZE_NAMES[S.size]}"><span class="size-line" style="height:${[2, 4, 7][S.size]}px"></span></button>`;
     if (lz[k]) return tb(k, I[k], Q_NAMES[k], S.tool === k, false);
@@ -2101,10 +2113,11 @@
   function renderQbar() {
     const el = $('#qbar');
     // 판(막대) 없이 넣은 것만 동그란 버튼으로. 옮기기·빼기는 동그라미를 꾹 눌러 끌기
-    el.hidden = !Q.show || !Q.items.length;
+    const html = Q.show ? Q.items.map(qButton).join('') : '';
+    el.hidden = !html;
     if (el.hidden) { el.innerHTML = ''; return; }
     el.classList.toggle('l', Q.side === 'l');
-    el.innerHTML = Q.items.map(qButton).join('');
+    el.innerHTML = html;
     placeQbar();
   }
   function placeQbar() {
@@ -2138,6 +2151,9 @@
         <label class="pp-custom" title="직접 고르기"><input type="color" id="pp-color" value="${cur}" aria-label="색 직접 고르기"><span>직접</span></label></div>
       <p class="mh">굵기</p>
       <div class="pp-sizes">${[0, 1, 2].map(i => `<button class="tb" type="button" data-m="size" data-v="${i}" aria-pressed="${i === S.size}"><span class="size-line" style="height:${Math.max(2, Math.min(12, SIZES[t][i] * (t === 'hl' ? 0.5 : 1.6)))}px"></span><span class="lbl">${SIZE_NAMES[i]}</span></button>`).join('')}</div>
+      <p class="mh">즐겨찾기 <small>넣은 펜만 도구 줄 맨 앞에 보여요 (3개까지)</small></p>
+      ${FAV.some(Boolean) ? `<ul class="pp-favs">${FAV.map((f, n) => f ? `<li><span class="dot${f.t === 'hl' ? ' hl' : ''}" style="background:${f.c}"></span><span>${esc(penLabel(f.t, f.c))} · ${SIZE_NAMES[f.size]}</span><button class="tb" type="button" data-m="favrm" data-v="${n}">빼기</button></li>` : '').join('')}</ul>` : ''}
+      <button class="btn ghost wide" type="button" data-m="favadd"${favHas({ t, c: S.col[t], size: S.size }) || !FAV.includes(null) ? ' disabled' : ''}>★ 지금 펜을 즐겨찾기에 넣기</button>
       <div class="row"><button class="btn" type="button" data-m="close">다 골랐어요</button></div>`;
     };
     const setCol = c => { S.sw[t][at] = c; S.col[t] = c; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); };
@@ -2148,6 +2164,8 @@
       if (m === 'slot') { at = Number(v); S.col[t] = S.sw[t][at]; S.pt = t; S.tool = 'draw'; saveSettings(); renderTools(); show(); return; }
       if (m === 'col') { setCol(v); show(); return; }
       if (m === 'size') { S.size = Number(v); saveSettings(); renderTools(); show(); return; }
+      if (m === 'favadd') { S.pt = t; S.tool = 'draw'; saveSettings(); addFav(); show(); return; }
+      if (m === 'favrm') { removeFav(Number(v)); show(); return; }
     };
     // 미리 보기: 지금 고른 펜으로 물결 한 줄
     const prev = () => {
@@ -2175,15 +2193,15 @@
         <button class="tb" type="button" data-m="down" data-v="${n}" aria-label="아래로"${n < items.length - 1 ? '' : ' disabled'}>↓</button>
         <button class="tb" type="button" data-m="rm" data-v="${n}">빼기</button></li>`).join('')}</ol>` : '<p class="hint">아직 없어요. 아래에서 골라 넣으세요.</p>'}
       <p class="mh">더 넣기</p>
-      <div class="qadd">${Q_ITEMS.filter(([k]) => !items.includes(k)).map(([k, label]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">+ ${esc(label)}</button>`).join('')}</div>
-      <div class="row"><button class="btn ghost" type="button" data-m="reset">처음대로</button><button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">저장</button></div>`;
+      <div class="qadd">${Q_ITEMS.filter(([k]) => !items.includes(k) && !(/^fav\d$/.test(k) && !FAV[Number(k[3])])).map(([k, label]) => `<button class="btn ghost" type="button" data-m="add" data-v="${k}">+ ${esc(label)}</button>`).join('')}</div>
+      <div class="row"><button class="btn ghost" type="button" data-m="reset">모두 빼기</button><button class="btn ghost" type="button" data-m="close">취소</button><button class="btn" type="button" data-m="ok">저장</button></div>`;
     const fn = b => {
       const m = b.dataset.m, n = Number(b.dataset.v);
       if (m === 'up' && n > 0) [items[n - 1], items[n]] = [items[n], items[n - 1]];
       else if (m === 'down' && n < items.length - 1) [items[n + 1], items[n]] = [items[n], items[n + 1]];
       else if (m === 'rm') items.splice(n, 1);
       else if (m === 'add') items.push(b.dataset.v);
-      else if (m === 'reset') items = Q0.items.slice();
+      else if (m === 'reset') items = [];
       else if (m === 'ok') {
         Q.items = items; Q.show = true; saveQ(); closeModal(); renderTools();
         if (!Q.items.length) toast('빠른 도구가 비었어요. 도구 버튼을 꾹 눌러 넣을 수 있어요.');
@@ -2199,18 +2217,14 @@
     const sizeH = [2, 4, 7][S.size];
     const eraseLbl = S.eraseMode === 'part' ? '부분 지우개' : '지우개';
     $('#tools').innerHTML = `
-      ${favButtons()}
-      <span class="sep"></span>
+      ${favGroup('<span class="sep"></span>')}
       ${ptButtons(false)}
       <span class="sep"></span>
       ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase')}
       <button class="tb" type="button" data-a="size" title="굵기">${`<span class="size-line" style="height:${sizeH}px"></span>`}<span class="lbl">${SIZE_NAMES[S.size]}</span></button>
       <span class="sep"></span>
-      ${tb('laser', I.laser, '레이저', S.tool === 'laser')}
-      ${tb('laser2', I.laser2, '긴 레이저', S.tool === 'laser2')}
-      ${tb('laser3', I.laser3, '광선 레이저', S.tool === 'laser3')}
-      ${tb('laser4', I.laser4, '한번에 광선', S.tool === 'laser4')}
+      ${laserButton(true)}
       ${tb('point', pointIcon(), '따라다니기만', S.tool === 'point')}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover')}
       ${tb('curtain', I.curtain, '커튼')}
@@ -2246,12 +2260,11 @@
       <span class="pageno"></span>
       ${tb('next', I.next, '다음 쪽', null, false)}
       <span class="sep"></span>
-      ${favButtons()}
-      <span class="sep"></span>
+      ${favGroup('<span class="sep"></span>')}
       <button class="tb pt" type="button" data-a="penpanel" aria-pressed="${S.tool === 'draw'}" aria-label="펜·색 고르기 (지금: ${PTYPES[S.pt]})" title="펜·색 고르기 (지금: ${PTYPES[S.pt]})">${I[S.pt]}<span class="ptc" style="background:${S.col[S.pt]}"></span></button>
       ${swButtons()}
       ${tb('erase', I.erase, eraseLbl, S.tool === 'erase', false)}
-      ${tb('laser-x', I[laserKind()], LASER_NAMES[laserKind()] + ' (한 번 더 누르면 다른 레이저)', LASERS.includes(S.tool), false)}
+      ${laserButton(false)}
       ${tb('point', pointIcon(), '따라다니기만 (한 번 더 누르면 그림 고르기)', S.tool === 'point', false)}
       ${tb('cover', I.cover, '가림막', S.tool === 'cover', false)}
       ${tb('curtain', I.curtain, '커튼', null, false)}
@@ -2284,12 +2297,23 @@
     point: '따라다니기만: 펜을 대고 움직여도 아무것도 안 써지고, 펜 끝에 그림만 따라다녀요. 한 번 더 누르면 그림을 골라요. 다시 쓰려면 펜을 누르세요.',
     clip: '오답 담기: 틀린 문제를 상자로 둘러요. 오답 노트에 그림으로 들어가요. 다 담았으면 펜을 고르세요.',
   };
-  // 수업 화면 아래 줄은 자리가 좁아 레이저 버튼 하나: 한 번 더 누르면 레이저 → 긴 레이저 → 광선 레이저 → 한번에 광선
+  // 레이저는 버튼 하나: 누르면 고른 레이저, 레이저일 때 한 번 더 누르면 종류 고르기 창 (레이저·긴·광선·한번에 광선)
   const LASERS = ['laser', 'laser2', 'laser3', 'laser4'], LASER_NAMES = { laser: '레이저', laser2: '긴 레이저', laser3: '광선 레이저', laser4: '한번에 광선' };
-  let lastLaser = 'laser';
-  const laserKind = () => LASERS.includes(S.tool) ? S.tool : lastLaser;
+  const LASER_DESC = { laser: '빨간 꼬리가 잠깐 보였다 사라져요', laser2: '빛나는 꼬리가 오래 남아 반짝이다 사라져요', laser3: '빛나는 꼬리가 오래 남아요 (별 없음)', laser4: '펜을 떼고 1초 뒤 선 전체가 함께 사라져요' };
+  function laserButton(showLabel) {
+    const on = LASERS.includes(S.tool), tip = on ? ' · 한 번 더 누르면 종류 고르기' : '';
+    return `<button class="tb" type="button" data-a="laser-x" aria-pressed="${on}" aria-label="${LASER_NAMES[S.laser]}${tip}" title="${LASER_NAMES[S.laser]}${tip}">${I[S.laser]}${showLabel ? `<span class="lbl">${LASER_NAMES[S.laser]}</span>` : ''}</button>`;
+  }
+  function openLaserPick() {
+    showModal(`
+      <h2>레이저 고르기</h2>
+      <div class="laser-pick">${LASERS.map(k => `<button class="btn ghost" type="button" data-m="lz" data-v="${k}" aria-pressed="${k === S.laser}"><span class="lz-ic">${I[k]}</span><span class="lz-t"><b>${LASER_NAMES[k]}</b><small>${LASER_DESC[k]}</small></span></button>`).join('')}</div>
+      <div class="row"><button class="btn" type="button" data-m="close">닫기</button></div>`, b => {
+      if (b.dataset.m === 'lz') { closeModal(); setTool(b.dataset.v); }
+    });
+  }
   function setTool(t) {
-    if (LASERS.includes(t)) lastLaser = t;
+    if (LASERS.includes(t)) S.laser = t;
     if (S.tool !== t && TOOL_TIPS[t]) toast(TOOL_TIPS[t], 3600);
     if (t !== 'lasso') clearSel();
     S.tool = t; saveSettings(); renderTools();
@@ -2311,6 +2335,22 @@
     favHold = setTimeout(() => { favLong = true; saveFav(Number(b.dataset.fav)); }, 600);
   });
   for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, () => clearTimeout(favHold));
+  // 지금 펜을 빈 즐겨찾기 칸에 넣기 / 빼기 ([펜·색 고르기] 창에서)
+  const curPen = () => ({ t: S.pt, c: S.col[S.pt], size: S.size });
+  const favHas = p => FAV.some(f => f && f.t === p.t && f.c === p.c && f.size === p.size);
+  function addFav() {
+    const n = FAV.indexOf(null), p = curPen();
+    if (favHas(p)) { toast('지금 펜은 이미 즐겨찾기에 있어요.'); return false; }
+    if (n < 0) { toast('즐겨찾기는 3개까지예요. 하나를 빼거나, 즐겨찾기를 길게 눌러 지금 펜으로 바꾸세요.', 3600); return false; }
+    FAV[n] = p; ls.set(K.fav, FAV); renderTools();
+    toast(`즐겨찾기에 ‘${penLabel(p.t, p.c)} · ${SIZE_NAMES[p.size]}’ 펜을 넣었어요. 도구 줄 맨 앞에 보여요.`, 3200);
+    return true;
+  }
+  function removeFav(n) {
+    FAV[n] = null; ls.set(K.fav, FAV);
+    if (Q.items.includes('fav' + n)) { Q.items = Q.items.filter(k => k !== 'fav' + n); saveQ(); }
+    renderTools();
+  }
   function saveFav(n) {
     if (S.tool !== 'draw') { toast('먼저 펜 색과 굵기를 고른 뒤, 즐겨찾기 칸을 길게 누르세요.'); return; }
     FAV[n] = { t: S.pt, c: S.col[S.pt], size: S.size }; ls.set(K.fav, FAV);
@@ -2326,7 +2366,7 @@
     if (b.dataset.sw != null) return 'sw' + b.dataset.sw;
     if (b.dataset.fav != null) return 'fav' + b.dataset.fav;
     const a = b.dataset.a;
-    if (a === 'laser-x') return laserKind();
+    if (a === 'laser-x') return 'laserx';
     return a && Q_NAMES[a] ? a : null;
   };
   viewer.addEventListener('pointerdown', e => {
@@ -2430,7 +2470,7 @@
     if (b.dataset.a === 'qpop-add' || b.dataset.a === 'qpop-del') { qpopAct(b.dataset.a === 'qpop-add', b.dataset.k); return; }
     if (b.dataset.fav) {
       if (favLong) { favLong = false; return; }
-      const f = FAV[Number(b.dataset.fav)]; S.pt = f.t; S.col[f.t] = f.c; S.size = f.size; setTool('draw'); return;
+      const f = FAV[Number(b.dataset.fav)]; if (!f) return; S.pt = f.t; S.col[f.t] = f.c; S.size = f.size; setTool('draw'); return;
     }
     if (b.dataset.pt) {
       const t = b.dataset.pt;
@@ -2450,10 +2490,7 @@
         if (S.tool === 'erase') { S.eraseMode = S.eraseMode === 'part' ? 'stroke' : 'part'; toast(S.eraseMode === 'part' ? '부분 지우개: 문지른 부분만 지워요. (한 번 더 누르면 선 통째로)' : '지우개: 닿은 선을 통째로 지워요. (한 번 더 누르면 부분 지우개)', 3200); saveSettings(); renderTools(); }
         else setTool('erase');
         break;
-      case 'laser-x': {
-        const t = LASERS.includes(S.tool) ? LASERS[(LASERS.indexOf(S.tool) + 1) % LASERS.length] : lastLaser;
-        setTool(t); break;
-      }
+      case 'laser-x': if (LASERS.includes(S.tool)) openLaserPick(); else setTool(S.laser); break;
       case 'point': if (S.tool === 'point') openFollow(); else setTool('point'); break;
       case 'bar-toggle': toggleBar(); break;
       case 'laser': case 'laser2': case 'laser3': case 'laser4': case 'cover': case 'text': case 'lasso': setTool(a); break;
@@ -2717,10 +2754,11 @@
   // 도구 줄 숨기기: 빠른 도구 동그라미만으로 쓰기. 다시 보이기는 위 [도구 보이기] 또는 수업 화면 구석의 작은 단추
   function toggleBar() {
     S.nobar = !S.nobar; saveSettings();
-    if (S.nobar && (!Q.show || !Q.items.length)) { Q.show = true; if (!Q.items.length) Q.items = Q0.items.slice(); saveQ(); }
+    if (S.nobar && !Q.show && Q.items.length) { Q.show = true; saveQ(); }
     applyPb(); renderTools();
     const a = anchor(); layout(); restore(a); updateVisible();
-    toast(S.nobar ? '도구 줄을 숨겼어요. 옆 동그라미(빠른 도구)로 쓰고, [도구 보이기]를 누르면 다시 나와요.' : '도구 줄이 다시 보여요.', 3200);
+    toast(!S.nobar ? '도구 줄이 다시 보여요.' : Q.items.length ? '도구 줄을 숨겼어요. 옆 동그라미(빠른 도구)로 쓰고, [도구 보이기]를 누르면 다시 나와요.'
+      : '도구 줄을 숨겼어요. [도구 보이기]를 누르면 다시 나와요. 도구 버튼을 꾹 눌러 빠른 도구에 넣어 두면 숨긴 채로 쓸 수 있어요.', 4000);
   }
   applyPb();
   function openPbSide() {
@@ -2768,7 +2806,23 @@
   // [따라다니기만] 버튼 아이콘: 지금 따라다닐 그림을 칠판색 네모 안에
   const pointIcon = () => { const f = folDef(S.follow !== 'none' ? S.follow : 'hand'); return `<span class="fi">${f.svg}</span>`; };
   function folSync() { viewer.classList.toggle('folon', folShape() !== 'none'); if (folShape() === 'none') folHide(); }
-  function folHide() { clearTimeout(folTimer); folEl.hidden = true; }
+  function folHide() { clearTimeout(folTimer); folEl.hidden = true; if (FOL.raf) cancelAnimationFrame(FOL.raf); FOL.raf = 0; }
+  // 그림 옮기기: 펜 소식(1초에 240번까지, 바쁠 땐 몰려서 옴)마다 바로 옮기면 덜덜 떨림
+  // → 화면이 그릴 때마다(requestAnimationFrame) 펜 끝 쪽으로 부드럽게 다가감. 처음 나타날 때는 바로 그 자리
+  const FOL = { x: 0, y: 0, tx: 0, ty: 0, raf: 0 };
+  const folPaint = () => { folEl.style.transform = `translate3d(${FOL.x.toFixed(1)}px, ${FOL.y.toFixed(1)}px, 0)`; };
+  function folStep() {
+    FOL.raf = 0;
+    const dx = FOL.tx - FOL.x, dy = FOL.ty - FOL.y;
+    if (Math.abs(dx) + Math.abs(dy) < 0.5) { FOL.x = FOL.tx; FOL.y = FOL.ty; }
+    else { FOL.x += dx * 0.55; FOL.y += dy * 0.55; FOL.raf = requestAnimationFrame(folStep); }
+    folPaint();
+  }
+  function folMove(x, y, jump) {
+    FOL.tx = x; FOL.ty = y;
+    if (jump) { if (FOL.raf) cancelAnimationFrame(FOL.raf); FOL.raf = 0; FOL.x = x; FOL.y = y; folPaint(); return; }
+    if (!FOL.raf) FOL.raf = requestAnimationFrame(folStep);
+  }
   function folAt(e, ms) {
     const k = folShape();
     if (k === 'none' || S.view !== 'doc') { folHide(); return; }
@@ -2779,7 +2833,7 @@
       folEl.innerHTML = f.svg; folKind = k;
       Object.assign(folEl.firstChild.style, { left: -tip[0] + 'px', top: -tip[1] + 'px' });
     }
-    folEl.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+    folMove(e.clientX, e.clientY, folEl.hidden);
     folEl.hidden = false;
     clearTimeout(folTimer); folTimer = setTimeout(folHide, ms);
   }
