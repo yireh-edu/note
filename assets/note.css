@@ -383,3 +383,11 @@ button{font:inherit; color:inherit}
 .sbar-shield{position:fixed; top:0; left:0; right:0; height:env(safe-area-inset-top); background:var(--paper); z-index:80; pointer-events:none}
 :root:has(#viewer:not([hidden])) .sbar-shield{background:var(--bar)}
 .presenting .sbar-shield{background:var(--desk)}
+/* 이레 노트 그림 (투명 바탕): 첫 화면 제목 옆 · 빈 칸 안내 · 시작 화면 */
+.home .titlerow{display:flex; align-items:center; gap:12px}
+.home .logo-art{width:64px; height:auto; flex:none; margin:-6px 0 -6px -4px}
+.empty .empty-art{display:block; width:110px; height:auto; margin:2px auto 10px; opacity:.6}
+#splash{position:fixed; inset:0; z-index:90; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; background:var(--paper); transition:opacity .35s}
+#splash img{width:min(52vw, 240px); height:auto}
+#splash b{font-size:20px; color:var(--muted); font-weight:600; letter-spacing:.02em}
+#splash.gone{opacity:0; pointer-events:none}

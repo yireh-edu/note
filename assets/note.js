@@ -236,6 +236,12 @@
   window.addEventListener('error', e => { if (e.message && !/ResizeObserver/.test(e.message)) onAppError(e.message, e.error && e.error.stack); });
   window.addEventListener('unhandledrejection', e => { const r = e.reason; onAppError(r && r.message || r, r && r.stack); });
 
+  // ── 시작 화면(그림): 첫 화면이 그려지면 걷음. 너무 빨리 사라지면 깜빡이므로 켜고 0.6초는 보여 줌 ──
+  function hideSplash() {
+    const el = document.getElementById('splash'); if (!el || el.classList.contains('gone')) return;
+    setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 400); }, Math.max(0, 600 - performance.now()));
+  }
+
   // ── 창(모달): 내용과 버튼 처리 함수를 함께 넘김 ──
   // onClose: 창이 닫힐 때(닫기·바깥 누름·처리 끝) 한 번 부름
   let modalFn = null, modalOnClose = null;
@@ -289,16 +295,18 @@
     const fileRows = metas.filter(m => m.kind === 'file').map(row).join('');
     const gradeRows = metas.filter(m => m.kind === 'grade').map(row).join('');
     const wrongRow = metas.filter(m => m.kind === 'wrong').map(row).join('');
+    const emptyArt = CFG.art ? `<img class="empty-art" src="${CFG.art}" alt="" draggable="false">` : '';   // 비어 있을 때 흐릿한 그림
+    hideSplash();
     home.innerHTML = `
       <header>
-        <h1>${esc(CFG.title || '이레 노트')}</h1>
+        <div class="titlerow">${CFG.art ? `<img class="logo-art" src="${CFG.art}" alt="" draggable="false">` : ''}<h1>${esc(CFG.title || '이레 노트')}</h1></div>
         <p class="lead">PDF를 열어 그 위에 펜으로 쓰고 그려요. 쓴 내용은 이 기기에 저장돼서 다시 열면 그대로 있어요.</p>
       </header>
-      ${SHEETS.length || CFG.alwaysSheets ? `<h2>선생님 학습지</h2><div class="list">${sheetRows || '<p class="empty">아직 올라온 학습지가 없어요.</p>'}</div>` : ''}
+      ${SHEETS.length || CFG.alwaysSheets ? `<h2>선생님 학습지</h2><div class="list">${sheetRows || `<p class="empty">${emptyArt}아직 올라온 학습지가 없어요.</p>`}</div>` : ''}
       <h2>내 PDF <button class="btn" type="button" data-a="pick">PDF 열기</button></h2>
-      <div class="list">${fileRows || '<p class="empty">아직 연 PDF가 없어요. [PDF 열기]로 휴대폰·태블릿에 있는 PDF를 골라 보세요.<br>PDF는 인터넷에 올라가지 않고 이 기기 안에서만 열려요.</p>'}</div>
+      <div class="list">${fileRows || `<p class="empty">${emptyArt}아직 연 PDF가 없어요. [PDF 열기]로 휴대폰·태블릿에 있는 PDF를 골라 보세요.<br>PDF는 인터넷에 올라가지 않고 이 기기 안에서만 열려요.</p>`}</div>
       <h2>오답 노트</h2>
-      <div class="list">${wrongRow || '<p class="empty">학습지·PDF를 보다가 [더보기 → 오답 노트에 담기]를 누르고 틀린 문제를 상자로 두르면 여기에 모여요. 빈 곳에 다시 풀어 볼 수 있어요.</p>'}</div>
+      <div class="list">${wrongRow || `<p class="empty">${emptyArt}학습지·PDF를 보다가 [더보기 → 오답 노트에 담기]를 누르고 틀린 문제를 상자로 두르면 여기에 모여요. 빈 곳에 다시 풀어 볼 수 있어요.</p>`}</div>
       <h2>학생 PDF 채점 <span class="h2-btns"><button class="btn ghost" type="button" data-a="grades">채점 기록</button><button class="btn ghost" type="button" data-a="pick-grade">학생 PDF 열기</button></span></h2>
       <div class="list">${gradeRows || '<p class="empty">선생님용이에요. 학생이 카톡으로 보낸 PDF를 열면 빨간 펜과 ○ ✓ ✗ 도장으로 채점하고, [채점 돌려주기]로 다시 보낼 수 있어요.</p>'}</div>
       <h2>필기 백업</h2>

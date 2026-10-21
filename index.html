@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/note.css?v=202610210928">
-<link rel="preload" href="assets/note.js?v=202610210928" as="script">
+<link rel="stylesheet" href="assets/note.css?v=202610211159">
+<link rel="preload" href="assets/note.js?v=202610211159" as="script">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#3E9F7A">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/app-192.png">
@@ -19,6 +19,7 @@
 <!-- 아이폰·아이패드 홈 화면 앱: 시계·배터리 줄을 투명하게 해서 앱 화면이 맨 위까지 (default로 하면 어두운 화면에서도 흰 띠가 생김)
      그 뒤에 넘어간 내용이 비쳐 흐려지지 않도록 note.css .sbar-shield 가 앱 바탕색으로 가림 -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>window.IRAE_GATE_ART = 'assets/note-art.svg?v=202610211159';</script>
 <meta name="robots" content="noindex, nofollow">
 <style>html.gated body>*:not(#gate){display:none !important}
 #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F6F8FB;z-index:9999;font-family:'IBM Plex Sans KR',system-ui,sans-serif;padding:16px}
@@ -28,6 +29,7 @@
 #gate button,#irae-join button{width:100%;font-size:17px;padding:12px;border:0;border-radius:12px;background:#18212E;color:#fff;cursor:pointer}
 #gate .err,#irae-join .err{color:#C8392B;min-height:1.4em;margin:10px 0 0;font-size:14px}
 #gate .kakao,#irae-join .kakao,.irae-acc .kakao{background:#FEE500;color:#191919;font-weight:700}
+#gate .gart{display:block;width:132px;height:auto;margin:-8px auto 4px}
 #gate .or{display:flex;align-items:center;gap:10px;color:#8A94A3;font-size:13px;margin:16px 0}#gate .or:before,#gate .or:after{content:'';flex:1;border-top:1px solid #DDE3EA}
 #irae-join{position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,14,20,.45);font-family:'IBM Plex Sans KR',system-ui,sans-serif}
 #irae-join .later{background:transparent;color:#5B6675;font-size:15px;margin-top:6px}
@@ -164,7 +166,7 @@
   document.documentElement.classList.add('gated');
   function show() {
     var g = document.createElement('div'); g.id = 'gate';
-    g.innerHTML = '<form><h2>이레</h2><p>카카오로 시작하거나<br>선생님께 받은 반 코드를 넣어 주세요.</p>' +
+    g.innerHTML = '<form>' + (window.IRAE_GATE_ART ? '<img class="gart" src="' + window.IRAE_GATE_ART + '" alt="">' : '') + '<h2>이레</h2><p>카카오로 시작하거나<br>선생님께 받은 반 코드를 넣어 주세요.</p>' +
       '<button type="button" class="kakao">카카오로 시작하기</button><div class="or">또는</div>' +
       '<input type="password" inputmode="numeric" autocomplete="off" aria-label="반 코드" maxlength="12"><button type="submit">반 코드로 들어가기</button><p class="err" role="alert">' + (loginErr ? '카카오 로그인이 안 됐어요. 다시 해 주세요.' : '') + '</p></form>';
     document.body.appendChild(g);
@@ -370,8 +372,9 @@
 })();</script>
 </head>
 <body>
+<div id="splash" aria-hidden="true"><img src="assets/note-art.svg?v=202610211159" alt=""><b>이레 노트</b></div>
 <div id="app"></div>
-<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610210928","alwaysSheets":true};</script>
+<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610211159","alwaysSheets":true,"art":"assets/note-art.svg?v=202610211159"};</script>
 <script>
 // 학습지 목록은 선생님이 자주 바꾸므로 열 때마다 새로 받음 (?t=지금 시각)
 (function () {
@@ -379,7 +382,7 @@
   s.src = 'sheets.js?t=' + Date.now();
   s.onload = s.onerror = function () {
     var app = document.createElement('script');
-    app.src = 'assets/note.js?v=202610210928';
+    app.src = 'assets/note.js?v=202610211159';
     document.body.appendChild(app);
   };
   document.body.appendChild(s);
