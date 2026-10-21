@@ -1102,7 +1102,7 @@
   const FX = { trail: [], strokes: [], head: null, ring: null, raf: 0 };
   const LASER_LIFE = { laser: 700, laser2: 1600, laser3: 1600, laser5: 1600 };   // 꼬리가 남는 시간(ms) — 긴 레이저·광선 레이저는 더 오래 남음
   const ONCE_HOLD = 1000, ONCE_FADE = 1000;
-  const BEAM_HALO = [[30, 0.035], [22, 0.06], [15, 0.1], [10, 0.17], [6.5, 0.3]];   // 한번에 광선 빛 띠: [굵기, 진하기] 바깥 → 안   // 한번에 광선: 펜을 떼고 이만큼 그대로 있다가, 선 전체가 함께 서서히 사라짐
+  const BEAM_HALO = [[46, 0.016], [38, 0.024], [30, 0.034], [22, 0.055], [15, 0.09], [10, 0.16], [6.5, 0.28]];   // 바깥 띠를 넓게 두어 멀리까지 옅게 번짐   // 한번에 광선 빛 띠: [굵기, 진하기] 바깥 → 안   // 한번에 광선: 펜을 떼고 이만큼 그대로 있다가, 선 전체가 함께 서서히 사라짐
   function fxKick() { if (!FX.raf) FX.raf = requestAnimationFrame(fxFrame); }
   function fxFrame() {
     FX.raf = 0;
@@ -1173,7 +1173,7 @@
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       const k = g.th ? 0.8 : 1;
       for (const [w, o] of BEAM_HALO) { ctx.strokeStyle = `rgba(255,50,70,${(o * a).toFixed(3)})`; ctx.lineWidth = w * k; ctx.stroke(); }
-      ctx.strokeStyle = `rgba(255,40,62,${(0.9 * a).toFixed(3)})`; ctx.lineWidth = g.th ? 2.6 : 3.8; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,40,62,${(0.9 * a).toFixed(3)})`; ctx.lineWidth = g.th ? 1.6 : 2.4; ctx.stroke();
       ctx.strokeStyle = `rgba(255,250,250,${(0.95 * a).toFixed(3)})`; ctx.lineWidth = g.th ? 0.9 : 1.6; ctx.stroke();
     }
     if (FX.head && FX.head.g) {
