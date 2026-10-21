@@ -139,7 +139,7 @@
     pencil: '<svg viewBox="0 0 24 24"><path d="M5 19l1.2-4.4L16.4 4.4a1.8 1.8 0 012.6 0l.6.6a1.8 1.8 0 010 2.6L9.4 17.8z"/><path d="M14.6 6.2l3.2 3.2M5 19l4.4-1.2"/></svg>',
     pen: '<svg viewBox="0 0 24 24"><path d="M18.5 3.5l2 2L9 17l-3.2 1.2L7 15z"/><path d="M16.5 5.5l2 2M4 20l1.8-1.8"/></svg>',
     point: '<svg viewBox="0 0 24 24"><path d="M5 4l6.5 15.5 2.2-6.3 6.3-2.2z"/><path d="M14 14l5 5"/></svg>',
-    chalk: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5l2-5L15 6l3 3-8.5 8.5z"/><path d="M15 6l1.6-1.6a1.4 1.4 0 012 0l1 1a1.4 1.4 0 010 2L18 9M3 21.5h3M8.5 21.5h1"/></svg>',
+    chalk: '<svg viewBox="0 0 24 24"><rect x="9.2" y="1.6" width="6" height="15.5" rx="3" transform="rotate(40 12.2 9.35)"/><path d="M8.2 13.6l2.6 2.4" stroke-opacity=".5"/><circle cx="4.2" cy="20.4" r=".9" fill="currentColor" stroke="none"/><circle cx="7.2" cy="21.3" r=".8" fill="currentColor" stroke="none"/><circle cx="3.4" cy="17.4" r=".7" fill="currentColor" stroke="none"/></svg>',
     nib: '<svg viewBox="0 0 24 24"><path d="M12 21l-5.5-9L12 3l5.5 9z"/><path d="M12 21v-7.5"/><circle cx="12" cy="11.5" r="1.4"/></svg>',
     hl: '<svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-7.5 7.5h-3l-2-2v-3z"/><path d="M7 15l-3 3v2h4l2-2M4 21h16"/></svg>',
     palette: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.2 0 1.8-.8 1.8-1.7 0-1.1-.9-1.4-.9-2.4 0-.9.8-1.6 1.7-1.6H17a4 4 0 004-4c0-4.6-4-8.3-9-8.3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>',
@@ -152,7 +152,7 @@
     ruler: '<svg viewBox="0 0 24 24"><path d="M3 16.5L16.5 3 21 7.5 7.5 21z"/><path d="M7 12.5l2 2M9.6 9.9l1.4 1.4M12 7.5l2 2M14.6 4.9l1.4 1.4"/></svg>',
     prot: '<svg viewBox="0 0 24 24"><path d="M3 18a9 9 0 0 1 18 0z"/><path d="M12 18l4.6-6.4M6.7 12.8l1 .8M12 9v1.4M17.3 12.8l-1 .8"/></svg>',
     photo: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg>',
-    curtain: '<svg viewBox="0 0 24 24"><path d="M3 4h18"/><path d="M5 4v8c2 0 3-1 3.5-3 .5 2 1.5 3 3.5 3s3-1 3.5-3c.5 2 1.5 3 3.5 3V4"/><path d="M5 16h14M5 19.5h14" stroke-dasharray="2 2.2"/></svg>',
+    curtain: '<svg viewBox="0 0 24 24"><path d="M2.5 3.5h19"/><path d="M4 3.5v16.5c2.4 0 4.6-.6 6-2-1.6-4-1.6-10.4 0-14.5"/><path d="M20 3.5v16.5c-2.4 0-4.6-.6-6-2 1.6-4 1.6-10.4 0-14.5"/><path d="M6.4 7v9M17.6 7v9" stroke-opacity=".45"/></svg>',
   };
 
   // ── 날짜·버전 ──
@@ -2393,12 +2393,12 @@
       <span class="sep"></span>
       ${tb('thumbs', I.grid, '쪽 목록', null, L)}
       ${tb('more', I.more, '더보기', null, L)}`;
-    $('#tools').innerHTML = toolsHtml(true);
+    $('#tools').innerHTML = toolsHtml(false);   // 도구 줄은 아이콘만 (이름은 길게 누르거나 마우스를 올리면)
     // 자주 찾는 [수업 화면]·[보내기]는 위 줄에 늘 보이게
     const sendIcon = sheet || grade ? I.send : I.save, sendLbl = sheet ? '선생님께 보내기' : grade ? '채점 돌려주기' : 'PDF로 저장';
     $('#bar-actions').innerHTML = `
-      ${tb('bar-toggle', I.tbar, S.nobar ? '도구 보이기' : '도구 숨기기', S.nobar)}
-      <button class="tb" type="button" data-a="present">${I.board}<span class="lbl">수업 화면</span></button>
+      ${tb('bar-toggle', I.tbar, S.nobar ? '도구 보이기' : '도구 숨기기', S.nobar, false)}
+      <button class="tb" type="button" data-a="present" title="수업 화면" aria-label="수업 화면">${I.board}</button>
       <button class="tb primary" type="button" data-a="send">${sendIcon}<span class="lbl">${sendLbl}</span></button>`;
     $('#pbar').innerHTML = `
       ${tb('prev', I.prev, '이전 쪽', null, false)}
@@ -2928,12 +2928,39 @@
   const stickTip = L => { const r = (L / 2 - 4) * Math.SQRT1_2; return [L / 2 - r, L / 2 - r]; };
   const FOLLOW = {
     none: { n: '없음' },
-    chalk: { n: '분필', L: 64, svg: stickSvg(64, '<rect x="4" y="26" width="44" height="12" rx="3" fill="#FAFAF2" stroke="#7E8792" stroke-width="1.5"/><rect x="4.8" y="26.8" width="6" height="10.4" rx="2.4" fill="#E4E4D8"/><path d="M20 29h18M24 34h14" stroke="#D9D9CC" stroke-width="1.2"/>') },
-    pencil: { n: '연필', L: 72, svg: stickSvg(72, '<path d="M4 36l15-6h0v12z" fill="#EBC9A0" stroke="#9A7A10" stroke-width="1"/><path d="M4 36l6-2.4v4.8z" fill="#2E3238"/><rect x="19" y="30" width="38" height="12" fill="#F4C430" stroke="#9A7A10" stroke-width="1.2"/><path d="M19 34h38M19 38h38" stroke="#E0AE18" stroke-width="1"/><rect x="57" y="30" width="5" height="12" fill="#C0C4CA" stroke="#80868E" stroke-width="1"/><rect x="62" y="30" width="7" height="12" rx="2.5" fill="#F48FA0" stroke="#B85A6A" stroke-width="1"/>') },
-    stick: { n: '지시봉', L: 120, svg: stickSvg(120, '<path d="M5 60L84 56.5v7z" fill="#B07A45" stroke="#5E3E1E" stroke-width="1"/><rect x="84" y="55" width="32" height="10" rx="4" fill="#5E3E1E"/><circle cx="6" cy="60" r="3.2" fill="#D2372A" stroke="#fff" stroke-width="1"/>') },
-    hand: { n: '손가락', L: 64, tip: [24, 3], svg: '<svg viewBox="0 0 64 64" width="64" height="64"><g fill="#FFD8B5" stroke="#9A6B45" stroke-width="1.6" stroke-linejoin="round"><path d="M19 30V7.5a5 5 0 0110 0V27"/><path d="M29 27a4.5 4.5 0 019 0v2a4.5 4.5 0 019 0v2.5a4.5 4.5 0 019 0V44c0 9-6 16-16 16h-6c-6 0-10-3-13-8l-6-10a4.2 4.2 0 016.5-5.2L19 39V30"/></g><path d="M38 29v4M47 31.5v3.5" stroke="#9A6B45" stroke-width="1.4" stroke-linecap="round"/></svg>' },
-    ring: { n: '동그라미', L: 64, tip: [32, 32], svg: '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="24" fill="rgba(255,212,0,.14)" stroke="#FFC400" stroke-width="4"/><circle cx="32" cy="32" r="24" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1"/></svg>' },
-    dot: { n: '빨간 점', L: 32, tip: [16, 16], svg: '<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="12" fill="rgba(229,57,53,.22)"/><circle cx="16" cy="16" r="6.5" fill="#E53935" stroke="#fff" stroke-width="1.5"/></svg>' },
+    // 분필: 둥근 하얀 막대, 위쪽 빛·아래쪽 그늘, 끝은 닳아 둥글고 가루가 조금
+    chalk: { n: '분필', L: 64, svg: stickSvg(64, '<rect x="5" y="26.5" width="46" height="11" rx="5.5" fill="#F8F7F0"/>' +
+      '<rect x="7" y="33.6" width="43" height="3.4" rx="1.7" fill="#000" opacity=".09"/><rect x="10" y="28.1" width="38" height="2.2" rx="1.1" fill="#fff"/>' +
+      '<ellipse cx="7.5" cy="32" rx="3" ry="5.2" fill="#E8E6DA"/><rect x="5" y="26.5" width="46" height="11" rx="5.5" fill="none" stroke="#5E6873" stroke-opacity=".45" stroke-width="1"/>' +
+      '<circle cx="3.2" cy="28.4" r=".9" fill="#fff" opacity=".8"/><circle cx="2.4" cy="35.2" r=".7" fill="#fff" opacity=".7"/>') },
+    // 연필: 육각 면 줄무늬, 깎은 나무, 흑연 심, 은색 쇠테(홈 두 줄), 분홍 지우개
+    pencil: { n: '연필', L: 72, svg: stickSvg(72, '<path d="M4 36L19.5 30.5v11z" fill="#F2D4A9"/><path d="M4 36h15.5v5.5z" fill="#000" opacity=".1"/><path d="M4 36l5.6-2v4z" fill="#2F343B"/>' +
+      '<rect x="19.5" y="30.5" width="37" height="11" fill="#F6C73B"/><rect x="19.5" y="30.5" width="37" height="3.5" fill="#FFE27E"/><rect x="19.5" y="38" width="37" height="3.5" fill="#D99F16"/>' +
+      '<path d="M19.5 34h37M19.5 38h37" stroke="#000" stroke-opacity=".12" stroke-width=".8"/>' +
+      '<rect x="56.5" y="30" width="7" height="12" fill="#CDD3DB"/><path d="M58.8 30v12M61.2 30v12" stroke="#97A1AD" stroke-width="1"/><rect x="56.5" y="31" width="7" height="1.8" fill="#fff" opacity=".6"/>' +
+      '<rect x="63.2" y="30.5" width="6.6" height="11" rx="2.6" fill="#F08AA0"/><rect x="63.8" y="31.6" width="5" height="2" rx="1" fill="#fff" opacity=".4"/>' +
+      '<path d="M4 36L19.5 30.5h50.3v11H19.5z" fill="none" stroke="#6B5310" stroke-opacity=".45" stroke-width=".9" stroke-linejoin="round"/>') },
+    // 지시봉: 끝이 가는 나무 막대(빛·그늘), 빨간 고무 끝(반짝), 금색 테, 홈 파인 손잡이
+    stick: { n: '지시봉', L: 120, svg: stickSvg(120, '<path d="M9 59.2L84 56v8L9 60.8z" fill="#C48F58"/><path d="M9 59.4L84 56.6v1.8L9 60z" fill="#fff" opacity=".28"/><path d="M9 60.5L84 62.3V64L9 60.8z" fill="#000" opacity=".16"/>' +
+      '<rect x="84" y="55.4" width="4.2" height="9.2" rx=".8" fill="#D4AF37"/><rect x="84" y="56.2" width="4.2" height="1.6" fill="#fff" opacity=".45"/>' +
+      '<rect x="88" y="55" width="28" height="10" rx="4.6" fill="#3F2A17"/><path d="M95 55.6v8.8M101 55.6v8.8M107 55.6v8.8" stroke="#fff" stroke-opacity=".16" stroke-width="1.2"/><rect x="90" y="56.4" width="24" height="1.8" rx=".9" fill="#fff" opacity=".18"/>' +
+      '<circle cx="6.6" cy="60" r="3.5" fill="#E53935"/><circle cx="5.5" cy="58.8" r="1.1" fill="#fff" opacity=".85"/>') },
+    // 손가락: 펴진 검지(손톱), 접힌 세 손가락, 엄지, 하얀 소매 끝
+    hand: { n: '손가락', L: 64, tip: [24, 3], svg: '<svg viewBox="0 0 64 64" width="64" height="64">' +
+      '<path d="M19 34V8a5 5 0 0110 0v17.5a4.6 4.6 0 019 .8 4.3 4.3 0 018.4 1.6 3.8 3.8 0 017.3 2.6V46c0 6-4.2 10.5-10 10.5H27c-4.2 0-7.4-2.2-9-6l-4.8-8.9c-1.2-2.7.4-5.4 3.2-5.6 1.2 0 2.2.6 2.6 1.6z" fill="#FFDDBF" stroke="#A06E48" stroke-width="1.5" stroke-linejoin="round"/>' +
+      '<path d="M38.2 26.6v6.6M46.4 28.4v6.2M29 26v7" stroke="#A06E48" stroke-width="1.2" stroke-linecap="round"/>' +
+      '<path d="M29.4 36.6c4.6 1.6 18.6 1.6 24-.8" fill="none" stroke="#A06E48" stroke-opacity=".5" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M17.8 41.2c3.8-1 8.6-.4 12.4 2.2" fill="none" stroke="#A06E48" stroke-opacity=".55" stroke-width="1.2" stroke-linecap="round"/>' +
+      '<path d="M21 7.4a3 3 0 016 0v2.8h-6z" fill="#FFF1E4"/><path d="M22 18.5h4M22 26.5h4" stroke="#A06E48" stroke-opacity=".4" stroke-width="1" stroke-linecap="round"/>' +
+      '<path d="M22 13c0-2 .8-3 2-3" stroke="#fff" stroke-opacity=".7" stroke-width="1.4" stroke-linecap="round" fill="none"/>' +
+      '<rect x="23.5" y="55" width="27" height="8" rx="2.4" fill="#fff" stroke="#8C9AAB" stroke-width="1.3"/><path d="M24.2 57.8h25.6" stroke="#C9D2DD" stroke-width="1"/></svg>' },
+    // 동그라미: 노란 고리(바깥 그늘·안쪽 빛), 가운데 작은 점
+    ring: { n: '동그라미', L: 64, tip: [32, 32], svg: '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="24" fill="rgba(255,212,0,.12)"/>' +
+      '<circle cx="32" cy="32" r="25.8" fill="none" stroke="#000" stroke-opacity=".18" stroke-width="1"/><circle cx="32" cy="32" r="24" fill="none" stroke="#FFC400" stroke-width="3.6"/>' +
+      '<circle cx="32" cy="32" r="21.6" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1"/><circle cx="32" cy="32" r="2.2" fill="#FFC400" stroke="#fff" stroke-width="1"/></svg>' },
+    // 빨간 점: 레이저처럼 번지는 빛 + 반짝
+    dot: { n: '빨간 점', L: 32, tip: [16, 16], svg: '<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="13.5" fill="#E53935" opacity=".13"/><circle cx="16" cy="16" r="9.5" fill="#E53935" opacity=".22"/>' +
+      '<circle cx="16" cy="16" r="5.8" fill="#E53935" stroke="#fff" stroke-width="1.4"/><circle cx="14.4" cy="14.4" r="1.6" fill="#fff" opacity=".85"/></svg>' },
   };
   // 내 그림: 올린 그림(가장 긴 쪽 160px PNG)과 펜 끝 자리(fx, fy: 그림 안 비율), 크기(sz: 가장 긴 쪽 px)
   const FOL_SZ = { 56: '작게', 88: '보통', 128: '크게' };
