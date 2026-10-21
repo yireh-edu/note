@@ -1563,8 +1563,8 @@
     const pg = hit.pg, pt = toPt(e, hit.r);
     mode = 'act';
     if (tool === 'erase') {
-      act = Object.assign(base, { k: 'erase', part: S.eraseMode === 'part', items: [], adds: [], made: new Set() });
-      eraseAt(pg, pt, e);
+      act = Object.assign(base, { k: 'erase', part: S.eraseMode === 'part', items: [], adds: [], made: new Set(), dirty: new Set(), last: null });
+      eraseTo(pg, pt, e);
       return;
     }
     if (tool === 'cover' || tool === 'clip') {
@@ -1658,7 +1658,7 @@
       }
       case 'erase': {
         const hit = pageAt(e.clientX, e.clientY);
-        if (hit) for (const ev of all) eraseAt(hit.pg, toPt(ev, hit.r), ev);
+        if (hit) for (const ev of all) eraseTo(hit.pg, toPt(ev, hit.r), ev);
         return;
       }
       case 'laser': {
@@ -1871,9 +1871,21 @@
 
   // 지우개: 선 통째로 또는 문지른 부분만(선을 둘로 나눔). 글자·가림막은 닿으면 통째로
   const eraseR = () => S.eraseMode === 'part' ? 9 / Math.min(S.scale, 3) + 1.5 : 6 / Math.min(S.scale, 3) + 2;
-  function eraseAt(pg, [x, y], ev) {
-    const R = eraseR();
+  // 지우개를 옮긴 자리까지: 펜 신호 사이가 벌어져도(빠르게 문지르거나 기기가 바쁠 때) 사이사이를 이어서 지움
+  function eraseTo(pg, pt, ev) {
+    const R = eraseR(), L = act.last && act.last.pg === pg ? act.last.pt : null;
     if (act.part && ev) { FX.ring = { x: ev.clientX, y: ev.clientY, r: R * S.scale }; fxKick(); }
+    if (L) {
+      const d = Math.hypot(pt[0] - L[0], pt[1] - L[1]), n = Math.min(60, Math.floor(d / (R * 0.5)));
+      for (let k = 1; k <= n; k++) eraseAt(pg, [L[0] + (pt[0] - L[0]) * k / (n + 1), L[1] + (pt[1] - L[1]) * k / (n + 1)]);
+    }
+    eraseAt(pg, pt);
+    act.last = { pg, pt };
+    // 지운 쪽은 화면이 그릴 때 한 번만 다시 그림 (펜 신호마다 쪽 전체를 다시 그리면 오래된 아이패드에서 아주 느림)
+    if (act.dirty.size && !act.eraf) act.eraf = requestAnimationFrame(() => { const a = act && act.k === 'erase' ? act : null; const d = a ? a.dirty : null; if (a) { a.eraf = 0; a.dirty = new Set(); } if (d) d.forEach(drawPg); });
+  }
+  function eraseAt(pg, [x, y]) {
+    const R = eraseR();
     const list = pg.ink; if (!list.length) return;
     let hit = false;
     for (let j = list.length - 1; j >= 0; j--) {
@@ -1888,13 +1900,15 @@
       if (pieces && pieces.length) { list.splice(j, 0, ...pieces); for (const p of pieces) { act.made.add(p); act.adds.push({ pg, s: p }); } }
       hit = true;
     }
-    if (hit) drawPg(pg);
+    if (hit) act.dirty.add(pg);
   }
   // 문지른 자리(반지름 R + 선 굵기 절반)의 점을 빼고 남은 조각들로 나눔. 점이 성긴 선(도형)은 촘촘히 채운 뒤에
   function splitStroke(s, x, y, R) {
     const pad = R + s.w / 2, step = Math.max(0.4, R / 3), P = s.p, dense = [P[0]];
     for (let i = 1; i < P.length; i++) {
-      const a = P[i - 1], b = P[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.floor(d / step);
+      const a = P[i - 1], b = P[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      // 지우개에 닿는 마디만 잘게 나눔
+      const n = segDist(x, y, a[0], a[1], b[0], b[1]) <= pad + step ? Math.floor(d / step) : 0;
       for (let k = 1; k < n; k++) { const t = k / n; dense.push([r2(a[0] + (b[0] - a[0]) * t), r2(a[1] + (b[1] - a[1]) * t), a[2] + (b[2] - a[2]) * t]); }
       dense.push(b);
     }
@@ -1907,6 +1921,8 @@
   }
   function endErase() {
     const a = act; act = null;
+    if (a && a.eraf) cancelAnimationFrame(a.eraf);
+    if (a && a.dirty) a.dirty.forEach(drawPg);   // 아직 다시 안 그린 쪽은 지금
     FX.ring = null; fxKick();
     if (a && (a.items.length || a.adds.length)) record({ t: 'erase', items: a.items, adds: a.adds });
   }
