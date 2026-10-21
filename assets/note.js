@@ -833,7 +833,8 @@
     const list = pg.ink.filter(s => s.k === 'cover');
     layer.innerHTML = list.map(s => {
       const o = off && off.set.has(s) ? off : { dx: 0, dy: 0 }, [x, y] = xf(o, s.x, s.y), f = o.f || 1;
-      return `<div class="cover${opened.has(s) ? ' open' : ''}" style="left:${x / pg.w * 100}%;top:${y / pg.h * 100}%;width:${s.cw * f / pg.w * 100}%;height:${s.ch * f / pg.h * 100}%"><span>${opened.has(s) ? '' : '눌러서 보기'}</span></div>`;
+      // 가림막 도구를 들고 있을 때만 오른쪽 위에 [×] (누르면 그 가림막 지우기 — 누름은 coverCloseAt이 판단)
+      return `<div class="cover${opened.has(s) ? ' open' : ''}" style="left:${x / pg.w * 100}%;top:${y / pg.h * 100}%;width:${s.cw * f / pg.w * 100}%;height:${s.ch * f / pg.h * 100}%"><span>${opened.has(s) ? '' : '눌러서 보기'}</span>${S.tool === 'cover' ? '<b class="cx" aria-hidden="true">×</b>' : ''}</div>`;
     }).join('');
   }
   function coverAt(pg, [x, y]) {
@@ -842,6 +843,20 @@
       if (s.k === 'cover' && x >= s.x && x <= s.x + s.cw && y >= s.y && y <= s.y + s.ch) return s;
     }
     return null;
+  }
+  // 가림막 오른쪽 위 [×] 자리(화면 34px 네모)를 눌렀는지
+  function coverCloseAt(pg, [x, y]) {
+    const k = 34 / S.scale;
+    for (let j = pg.ink.length - 1; j >= 0; j--) {
+      const s = pg.ink[j];
+      if (s.k === 'cover' && x >= s.x + s.cw - k && x <= s.x + s.cw && y >= s.y && y <= s.y + k) return j;
+    }
+    return -1;
+  }
+  function removeCoverAt(pg, j) {
+    const s = pg.ink[j]; pg.ink.splice(j, 1); opened.delete(s);
+    record({ t: 'erase', items: [{ pg, s, at: j }] });
+    renderCovers(pg); toast('가림막을 지웠어요. (되돌리기로 살릴 수 있어요)');
   }
   function toggleCoverAt(pg, pt) {
     const s = coverAt(pg, pt); if (!s) return false;
@@ -1567,6 +1582,7 @@
       eraseTo(pg, pt, e);
       return;
     }
+    if (tool === 'cover') { const j = coverCloseAt(pg, pt); if (j >= 0) { act = null; mode = null; removeCoverAt(pg, j); return; } }
     if (tool === 'cover' || tool === 'clip') {
       const el = document.createElement('div'); el.className = tool === 'clip' ? 'cover live clip' : 'cover live';
       pg.el.querySelector('.covers').appendChild(el);
@@ -2425,7 +2441,7 @@
     laser5: '가는 광선: 광선 레이저와 같은데 가운데 하얀 심이 더 가늘어요. 필기는 남지 않아요.',
     laser6: '한번에 가는 광선: 한번에 광선과 같은데 가운데 하얀 심이 더 가늘어요. 필기는 남지 않아요.',
     laser4: '한번에 광선: 펜을 떼고 1초 뒤, 그은 선 전체가 처음부터 끝까지 다 같이 서서히 사라져요. 필기는 남지 않아요.',
-    cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요.',
+    cover: '가림막: 답이 있는 곳을 끌어서 가려요. 수업 중에 톡 누르면 열리고, 다시 누르면 닫혀요. 지우려면 상자 오른쪽 위 ×를 누르세요.',
     text: '글자: 글자를 넣을 곳을 톡 누르세요. 넣은 글자를 누르면 고칠 수 있어요.',
     lasso: '올가미: 필기를 빙 둘러 그리거나 톡 눌러 골라요. 끌어서 옮기고, 오른쪽 아래 ●로 크기를 바꿔요.',
     point: '따라다니기만: 펜을 대고 움직여도 아무것도 안 써지고, 펜 끝에 그림만 따라다녀요. 한 번 더 누르면 그림을 골라요. 다시 쓰려면 펜을 누르세요.',
@@ -2450,7 +2466,9 @@
     if (LASERS.includes(t)) S.laser = t;
     if (S.tool !== t && TOOL_TIPS[t]) toast(TOOL_TIPS[t], 3600);
     if (t !== 'lasso') clearSel();
+    const coverChange = (S.tool === 'cover') !== (t === 'cover');
     S.tool = t; saveSettings(); renderTools();
+    if (coverChange) S.pages.forEach(pg => { if (pg.el) renderCovers(pg); });   // 가림막 [×] 보이기·숨기기
   }
   // 아이패드에서 글자 선택(→ 전체 선택)이 시작되지 않게, 혹시 잡힌 선택은 다음 터치 때 풀기
   const editable = t => t && t.closest && t.closest('input, textarea, [contenteditable]');

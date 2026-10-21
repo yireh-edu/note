@@ -377,3 +377,5 @@ button{font:inherit; color:inherit}
 .tools .tb[aria-pressed="true"], .pbar .tb[aria-pressed="true"]{background:var(--sel-soft); border-color:var(--sel); box-shadow:inset 0 0 0 1px var(--sel); color:var(--sel)}
 .tools .tb.pt .ptc, .pbar .tb.pt .ptc{width:18px; height:3.5px; margin-left:-9px}
 .tools{gap:2px}
+/* 가림막 도구일 때 오른쪽 위 [×] (누름은 note.js coverCloseAt, 화면 34px 네모) */
+.cover .cx{position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:50%; background:#fff; color:#B4232C; font:700 18px/26px system-ui,sans-serif; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.3)}
