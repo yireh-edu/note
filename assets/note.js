@@ -181,6 +181,7 @@
   // ── 뼈대 ──
   const app = $('#app');
   app.innerHTML = `
+    <div class="sbar-shield" aria-hidden="true"></div>
     <div class="home" id="home"></div>
     <div class="viewer" id="viewer" hidden>
       <div class="bar">

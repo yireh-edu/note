@@ -379,3 +379,7 @@ button{font:inherit; color:inherit}
 .tools{gap:2px}
 /* 가림막 도구일 때 오른쪽 위 [×] (누름은 note.js coverCloseAt, 화면 34px 네모) */
 .cover .cx{position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:50%; background:#fff; color:#B4232C; font:700 18px/26px system-ui,sans-serif; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.3)}
+/* 홈 화면 앱: 시계·배터리 줄 뒤를 앱 바탕색으로 가림 → 위로 넘긴 내용이 그 밑에 비쳐 흐려 보이지 않음 (높이 = 시계 줄, 일반 브라우저에서는 0) */
+.sbar-shield{position:fixed; top:0; left:0; right:0; height:env(safe-area-inset-top); background:var(--paper); z-index:80; pointer-events:none}
+:root:has(#viewer:not([hidden])) .sbar-shield{background:var(--bar)}
+.presenting .sbar-shield{background:var(--desk)}
