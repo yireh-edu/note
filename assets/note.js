@@ -1101,7 +1101,8 @@
   const fx = $('#fx');
   const FX = { trail: [], strokes: [], head: null, ring: null, raf: 0 };
   const LASER_LIFE = { laser: 700, laser2: 1600, laser3: 1600, laser5: 1600 };   // 꼬리가 남는 시간(ms) — 긴 레이저·광선 레이저는 더 오래 남음
-  const ONCE_HOLD = 1000, ONCE_FADE = 1000;   // 한번에 광선: 펜을 떼고 이만큼 그대로 있다가, 선 전체가 함께 서서히 사라짐
+  const ONCE_HOLD = 1000, ONCE_FADE = 1000;
+  const BEAM_HALO = [[30, 0.035], [22, 0.06], [15, 0.1], [10, 0.17], [6.5, 0.3]];   // 한번에 광선 빛 띠: [굵기, 진하기] 바깥 → 안   // 한번에 광선: 펜을 떼고 이만큼 그대로 있다가, 선 전체가 함께 서서히 사라짐
   function fxKick() { if (!FX.raf) FX.raf = requestAnimationFrame(fxFrame); }
   function fxFrame() {
     FX.raf = 0;
@@ -1164,19 +1165,23 @@
       if (g.pts.length < 2) continue;
       const al = !g.end || now - g.end < ONCE_HOLD ? 1 : 1 - (now - g.end - ONCE_HOLD) / ONCE_FADE;
       const a = al * al * (3 - 2 * al);   // 부드럽게 옅어짐 (깜빡임 없음)
-      ctx.beginPath(); ctx.moveTo(g.pts[0].x, g.pts[0].y); for (const p of g.pts) ctx.lineTo(p.x, p.y);
+      // 점 사이를 곡선으로 이은 한 줄 → 바깥으로 갈수록 옅어지는 빛 띠를 여러 겹 + 빨간 빛줄기 + 하얀 심 (은은한 그라데이션)
+      const P = g.pts;
+      ctx.beginPath(); ctx.moveTo(P[0].x, P[0].y);
+      for (let i = 1; i < P.length - 1; i++) ctx.quadraticCurveTo(P[i].x, P[i].y, (P[i].x + P[i + 1].x) / 2, (P[i].y + P[i + 1].y) / 2);
+      ctx.lineTo(P[P.length - 1].x, P[P.length - 1].y);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.shadowColor = 'rgba(255,30,50,.9)'; ctx.shadowBlur = 6 + 14 * a;
-      ctx.strokeStyle = `rgba(255,40,55,${(a * 0.9).toFixed(3)})`; ctx.lineWidth = 3 + 5 * a; ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = `rgba(255,248,248,${a.toFixed(3)})`; ctx.lineWidth = g.th ? 0.5 + 0.8 * a : 1 + 1.8 * a; ctx.stroke();
+      const k = g.th ? 0.8 : 1;
+      for (const [w, o] of BEAM_HALO) { ctx.strokeStyle = `rgba(255,50,70,${(o * a).toFixed(3)})`; ctx.lineWidth = w * k; ctx.stroke(); }
+      ctx.strokeStyle = `rgba(255,40,62,${(0.9 * a).toFixed(3)})`; ctx.lineWidth = g.th ? 2.6 : 3.8; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,250,250,${(0.95 * a).toFixed(3)})`; ctx.lineWidth = g.th ? 0.9 : 1.6; ctx.stroke();
     }
     if (FX.head && FX.head.g) {
-      const f = 0.85 + 0.15 * Math.sin(now / 40);
-      ctx.shadowColor = 'rgba(255,30,50,1)'; ctx.shadowBlur = 18 * f;
-      ctx.fillStyle = '#FF2D3C'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 7 * f, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#FFF8F8'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, FX.head.th ? 1.8 : 3, 0, Math.PI * 2); ctx.fill();
+      // 펜 끝 빛: 가운데는 하얗고 바깥으로 빨갛게 번지며 사라지는 둥근 빛 (살짝 숨 쉬듯)
+      const f = 0.9 + 0.1 * Math.sin(now / 60), R = (FX.head.th ? 13 : 16) * f, hx = FX.head.x, hy = FX.head.y;
+      const rg = ctx.createRadialGradient(hx, hy, 0, hx, hy, R);
+      rg.addColorStop(0, 'rgba(255,250,250,.95)'); rg.addColorStop(0.18, 'rgba(255,70,90,.85)'); rg.addColorStop(0.45, 'rgba(255,45,65,.28)'); rg.addColorStop(1, 'rgba(255,45,65,0)');
+      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(hx, hy, R, 0, Math.PI * 2); ctx.fill();
     } else if (FX.head) {
       ctx.fillStyle = 'rgba(255,45,45,.22)'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 15, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#FF2D2D'; ctx.beginPath(); ctx.arc(FX.head.x, FX.head.y, 6, 0, Math.PI * 2); ctx.fill();
@@ -1558,7 +1563,7 @@
       // 한번에 광선: 한 획을 통째로 모아 두었다가 다 같이 사라짐 (laser6은 하얀 심이 가늘게)
       const th = tool === 'laser6', grp = { pts: [{ x: e.clientX, y: e.clientY }], end: 0, th };
       FX.strokes.push(grp);
-      mode = 'act'; act = Object.assign(base, { k: 'laser', grp, th });
+      mode = 'act'; act = Object.assign(base, { k: 'laser', grp, th, g: true });   // g: 펜 끝도 빛나는 모양 (움직일 때도)
       FX.head = { x: e.clientX, y: e.clientY, g: true, th }; fxKick();
       return;
     }
