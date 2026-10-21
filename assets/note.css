@@ -118,7 +118,7 @@ button{font:inherit; color:inherit}
 
 @media (max-width:520px){
   .tb .lbl{display:none}
-  .home{padding-top:20px}
+  .home{padding-top:calc(20px + env(safe-area-inset-top))}   /* 시계·배터리 줄 높이를 꼭 더함 (빼면 아이폰에서 제목이 그 밑으로) */
 }
 
 /* 넓은 화면(태블릿)은 도구가 두 줄로 접혀 모두 보이게, 휴대폰은 옆으로 밀기 */
