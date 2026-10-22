@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/note.css?v=202610211159">
-<link rel="preload" href="assets/note.js?v=202610211159" as="script">
+<link rel="stylesheet" href="assets/note.css?v=202610220500">
+<link rel="preload" href="assets/note.js?v=202610220500" as="script">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#3E9F7A">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/app-192.png">
@@ -19,7 +19,7 @@
 <!-- 아이폰·아이패드 홈 화면 앱: 시계·배터리 줄을 투명하게 해서 앱 화면이 맨 위까지 (default로 하면 어두운 화면에서도 흰 띠가 생김)
      그 뒤에 넘어간 내용이 비쳐 흐려지지 않도록 note.css .sbar-shield 가 앱 바탕색으로 가림 -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<script>window.IRAE_GATE_ART = 'assets/note-art.svg?v=202610211159';</script>
+<script>window.IRAE_GATE_ART = 'assets/note-art.svg?v=202610220500';</script>
 <meta name="robots" content="noindex, nofollow">
 <style>html.gated body>*:not(#gate){display:none !important}
 #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F6F8FB;z-index:9999;font-family:'IBM Plex Sans KR',system-ui,sans-serif;padding:16px}
@@ -372,9 +372,9 @@
 })();</script>
 </head>
 <body>
-<div id="splash" aria-hidden="true"><img src="assets/note-art.svg?v=202610211159" alt=""><b>이레 노트</b></div>
+<div id="splash" aria-hidden="true"><img src="assets/note-art.svg?v=202610220500" alt=""><b>이레 노트</b></div>
 <div id="app"></div>
-<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610211159","alwaysSheets":true,"art":"assets/note-art.svg?v=202610211159"};</script>
+<script>window.NOTE_CFG = {"title":"이레 노트","ver":"202610220500","alwaysSheets":true,"art":"assets/note-art.svg?v=202610220500"};</script>
 <script>
 // 학습지 목록은 선생님이 자주 바꾸므로 열 때마다 새로 받음 (?t=지금 시각)
 (function () {
@@ -382,7 +382,7 @@
   s.src = 'sheets.js?t=' + Date.now();
   s.onload = s.onerror = function () {
     var app = document.createElement('script');
-    app.src = 'assets/note.js?v=202610211159';
+    app.src = 'assets/note.js?v=202610220500';
     document.body.appendChild(app);
   };
   document.body.appendChild(s);
