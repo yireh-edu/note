@@ -345,15 +345,33 @@
       closeModal(); openDoc(id);
     });
   }
-  // 노트 정리: 이름 바꾸기 · 폴더 옮기기
+  // 폴더에 노트 넣기: 이 폴더 밖의 노트를 골라 한꺼번에 옮김
+  async function putNotes(folder, fresh) {
+    if (!folder) return;
+    const others = (await DB.all('meta').catch(() => [])).filter(m => m.kind === 'note' && (m.folder || '') !== folder).sort((a, b) => (b.opened || b.added || 0) - (a.opened || a.added || 0));
+    if (!others.length) { toast('넣을 노트가 없어요. 노트가 모두 이 폴더에 있어요.'); return; }
+    showModal(`
+      <h2>‘${esc(folder)}’에 노트 넣기</h2>
+      <p>${fresh ? '폴더를 만들었어요. ' : ''}이 폴더에 넣을 노트를 고르세요.</p>
+      <div class="put-list">${others.map(m => `<label class="check"><input type="checkbox" value="${esc(m.id)}"> <span>${esc(m.name)}${m.folder ? ` <small>(지금: ${esc(m.folder)})</small>` : ''}</span></label>`).join('')}</div>
+      <p class="msg" id="put-msg" role="status"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">${fresh ? '나중에' : '닫기'}</button><button class="btn" type="button" data-m="put">넣기</button></div>`, async b => {
+      if (b.dataset.m !== 'put') return;
+      const ids = [...$('#modal-card').querySelectorAll('.put-list input:checked')].map(i => i.value);
+      if (!ids.length) { const msg = $('#put-msg'); msg.className = 'msg err'; msg.textContent = '넣을 노트를 하나 이상 골라 주세요.'; return; }
+      for (const m of others) if (ids.includes(m.id)) { m.folder = folder; await DB.put('meta', m).catch(() => {}); }
+      closeModal(); ls.set(FK.sel, folder); toast(`노트 ${ids.length}개를 ‘${folder}’에 넣었어요.`); renderHome();
+    });
+  }
+  // 노트 옮기기: 폴더 고르기 · 이름 바꾸기
   async function editNote(id) {
     const metas = await DB.all('meta').catch(() => []), m = metas.find(x => x.id === id); if (!m) return;
     const folders = folderList(metas);
     showModal(`
-      <h2>노트 정리</h2>
-      <label for="ne-name">이름</label><input id="ne-name" maxlength="40" value="${esc(m.name)}">
-      <p class="mh">폴더 ${folders.length ? '' : '<small>첫 화면의 [+ 폴더]로 폴더를 만들 수 있어요</small>'}</p>
+      <h2>노트 옮기기</h2>
+      <p class="mh">어느 폴더에 둘까요? ${folders.length ? '' : '<small>아직 폴더가 없어요. 첫 화면의 [+ 폴더]로 만들어요</small>'}</p>
       ${folderPick(folders, m.folder || '')}
+      <label for="ne-name">노트 이름</label><input id="ne-name" maxlength="40" value="${esc(m.name)}">
       <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="save">저장</button></div>`, async b => {
       if (b.dataset.m === 'fd') { pressOne(b); return; }
       if (b.dataset.m !== 'save') return;
@@ -393,13 +411,13 @@
     if (typeof fsel !== 'string' || (fsel && !folders.includes(fsel))) fsel = '';
     const inF = f => notes.filter(m => (m.folder || '') === f).length;
     const shown = fsel ? notes.filter(m => m.folder === fsel) : notes;
-    const noteRows = shown.map(m => row(m, `<button class="del" type="button" data-nedit="${esc(m.id)}">정리</button>`, !fsel && m.folder ? `<span class="fname">${esc(m.folder)}</span> · ` : '')).join('');
+    const noteRows = shown.map(m => row(m, `<button class="del mv" type="button" data-nedit="${esc(m.id)}">${FOLDER_IC}옮기기</button>`, !fsel && m.folder ? `<span class="fname">${esc(m.folder)}</span> · ` : '')).join('');
     const folderBar = `<div class="folders" role="group" aria-label="노트 폴더">
         <button class="fchip" type="button" data-folder="" aria-pressed="${!fsel}">전체 <span class="n">${notes.length}</span></button>
         ${folders.map(f => `<button class="fchip" type="button" data-folder="${esc(f)}" aria-pressed="${f === fsel}">${FOLDER_IC}${esc(f)} <span class="n">${inF(f)}</span></button>`).join('')}
         <button class="fchip add" type="button" data-a="new-folder">+ 폴더</button>
       </div>
-      ${fsel ? `<div class="fbar"><span class="fb-name">${FOLDER_IC}${esc(fsel)}</span><button class="del" type="button" data-a="ren-folder">이름 바꾸기</button><button class="del${folderDelArmed ? ' armed' : ''}" type="button" data-a="del-folder">${folderDelArmed ? '한 번 더 누르면 폴더를 지워요 (노트는 남아요)' : '폴더 지우기'}</button></div>` : ''}`;
+      ${fsel ? `<div class="fbar"><span class="fb-name">${FOLDER_IC}${esc(fsel)}</span>${notes.length > inF(fsel) ? '<button class="del put" type="button" data-a="put-notes">+ 노트 넣기</button>' : ''}<button class="del" type="button" data-a="ren-folder">이름 바꾸기</button><button class="del${folderDelArmed ? ' armed' : ''}" type="button" data-a="del-folder">${folderDelArmed ? '한 번 더 누르면 폴더를 지워요 (노트는 남아요)' : '폴더 지우기'}</button></div>` : ''}`;
     const emptyArt = CFG.art ? `<img class="empty-art" src="${CFG.art}" alt="" draggable="false">` : '';   // 비어 있을 때 흐릿한 그림
     hideSplash();
     home.innerHTML = `
@@ -412,7 +430,7 @@
       <div class="list">${fileRows || `<p class="empty">${emptyArt}아직 연 PDF가 없어요. [PDF 열기]로 휴대폰·태블릿에 있는 PDF를 골라 보세요.<br>PDF는 인터넷에 올라가지 않고 이 기기 안에서만 열려요.</p>`}</div>
       <h2>내 노트 <button class="btn" type="button" data-a="new-note">새 노트</button></h2>
       ${notes.length || folders.length ? folderBar : ''}
-      <div class="list" id="note-list">${noteRows || `<p class="empty">${emptyArt}${fsel ? `‘${esc(fsel)}’ 폴더가 비어 있어요. [새 노트]를 누르거나, 다른 노트의 [정리]에서 이 폴더로 옮겨요.` : 'PDF 없이 빈 쪽에 바로 써요. [새 노트]로 줄 노트·모눈·칠판 같은 쪽을 골라 시작하고, 폴더로 나눠 둘 수 있어요.'}</p>`}</div>
+      <div class="list" id="note-list">${noteRows || `<p class="empty">${emptyArt}${fsel ? `‘${esc(fsel)}’ 폴더가 비어 있어요. 위의 [+ 노트 넣기]로 만들어 둔 노트를 넣거나, [새 노트]로 이 폴더에 새로 만들어요.` : 'PDF 없이 빈 쪽에 바로 써요. [새 노트]로 줄 노트·모눈·칠판 같은 쪽을 골라 시작하고, 폴더로 나눠 둘 수 있어요.'}</p>`}</div>
       <h2>오답 노트</h2>
       <div class="list">${wrongRow || `<p class="empty">${emptyArt}학습지·PDF를 보다가 [더보기 → 오답 노트에 담기]를 누르고 틀린 문제를 상자로 두르면 여기에 모여요. 빈 곳에 다시 풀어 볼 수 있어요.</p>`}</div>
       <h2>학생 PDF 채점 <span class="h2-btns"><button class="btn ghost" type="button" data-a="grades">채점 기록</button><button class="btn ghost" type="button" data-a="pick-grade">학생 PDF 열기</button></span></h2>
@@ -430,7 +448,15 @@
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.a === 'pick') { pickKind = 'file'; $('#file-in').click(); return; }
     if (b.dataset.a === 'new-note') { newNote(); return; }
-    if (b.dataset.a === 'new-folder') { folderPrompt('새 폴더', '', async name => { addFolder(name); ls.set(FK.sel, name); renderHome(); }); return; }
+    if (b.dataset.a === 'new-folder') {
+      folderPrompt('새 폴더', '', async name => {
+        addFolder(name); ls.set(FK.sel, name); await renderHome();
+        // 폴더 밖에 노트가 있으면 바로 넣을 노트를 고르게 함
+        if ((await DB.all('meta').catch(() => [])).some(m => m.kind === 'note' && m.folder !== name)) putNotes(name, true);
+      });
+      return;
+    }
+    if (b.dataset.a === 'put-notes') { putNotes(ls.get(FK.sel, '')); return; }
     if (b.dataset.a === 'ren-folder') { const old = ls.get(FK.sel, ''); folderPrompt('폴더 이름 바꾸기', old, async name => { await renameFolder(old, name); renderHome(); }); return; }
     if (b.dataset.a === 'del-folder') {
       if (!folderDelArmed) { folderDelArmed = true; renderHome(); return; }

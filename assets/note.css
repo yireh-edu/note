@@ -405,3 +405,7 @@ button{font:inherit; color:inherit}
 .fbar .del.armed{color:#fff; background:var(--pen); border-color:var(--pen)}
 .item .fname{color:var(--sel)}
 .modal .pick-pat .btn[aria-pressed="true"], .modal .pick-fd .btn[aria-pressed="true"]{border-color:var(--sel); background:var(--sel-soft); color:var(--ink); font-weight:600}
+.item .del.mv, .fbar .del.put{display:inline-flex; align-items:center; gap:4px; color:var(--sel); border-color:var(--sel)}
+.item .del.mv .fic{width:14px; height:14px}
+.modal .put-list{display:grid; gap:4px; max-height:46vh; overflow:auto; margin:8px 0}
+.modal .put-list label.check{padding:8px 4px; border-bottom:1px solid var(--line); font-size:16px}
