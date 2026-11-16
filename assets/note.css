@@ -391,3 +391,17 @@ button{font:inherit; color:inherit}
 #splash img{width:min(52vw, 240px); height:auto}
 #splash b{font-size:20px; color:var(--muted); font-weight:600; letter-spacing:.02em}
 #splash.gone{opacity:0; pointer-events:none}
+
+/* ── 내 노트 · 폴더 ── */
+.folders{display:flex; flex-wrap:wrap; gap:8px; margin:0 0 10px}
+.fchip{display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--ink); font:inherit; font-size:14px; cursor:pointer}
+.fchip .n{color:var(--muted); font-size:12px}
+.fchip[aria-pressed="true"]{border-color:var(--sel); background:var(--sel-soft); color:var(--sel); font-weight:600}
+.fchip.add{border-style:dashed; color:var(--muted)}
+.fic{width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linejoin:round; flex:none}
+.fbar{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px}
+.fbar .fb-name{display:inline-flex; align-items:center; gap:6px; font-weight:600; margin-right:auto}
+.fbar .del{background:none; border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:13px; color:var(--muted); cursor:pointer}
+.fbar .del.armed{color:#fff; background:var(--pen); border-color:var(--pen)}
+.item .fname{color:var(--sel)}
+.modal .pick-pat .btn[aria-pressed="true"], .modal .pick-fd .btn[aria-pressed="true"]{border-color:var(--sel); background:var(--sel-soft); color:var(--ink); font-weight:600}

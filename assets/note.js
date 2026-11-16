@@ -73,6 +73,12 @@
   const PB_SIDES = { t: '위', b: '아래', l: '왼쪽', r: '오른쪽' };   // 수업 화면 도구 줄 자리
   const A4 = { w: 595.28, h: 841.89 };
   const WRONG = 'wrong:main';   // 오답 노트 (PDF 없이 넣은 쪽만 있는 문서)
+  // 내 노트: PDF 없이 빈 쪽으로 시작하는 문서 (kind 'note', meta.folder = 폴더 이름, 없으면 '')
+  //   폴더 목록(빈 폴더 포함)은 localStorage 'yireh-note-folders', 첫 화면에서 고른 폴더는 'yireh-note-folder-sel'
+  const FK = { list: 'yireh-note-folders', sel: 'yireh-note-folder-sel' };
+  const NOTE_PATS = ['lines', 'plain', 'grid', 'coord', 'numline', 'board'];
+  const isBare = m => !!(m && (m.kind === 'wrong' || m.kind === 'note'));   // PDF 없이 쪽만 있는 문서
+  const cleanName = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
   const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1); return w + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? a : b); };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const set0 = ls.get(K.set, {});
@@ -269,7 +275,93 @@
   }
 
   // ════════════════ 첫 화면 ════════════════
-  let delArmed = null, pickKind = 'file';
+  let delArmed = null, pickKind = 'file', folderDelArmed = false;
+  const FOLDER_IC = '<svg class="fic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+
+  // ── 내 노트 · 폴더 ──
+  // 폴더 목록 = 저장해 둔 목록(빈 폴더 포함) + 노트에 적힌 폴더 (백업에서 노트만 불러와도 폴더가 보이게)
+  function folderList(metas) {
+    const list = (ls.get(FK.list, []) || []).filter(f => typeof f === 'string' && f);
+    for (const m of metas) if (m.kind === 'note' && m.folder && !list.includes(m.folder)) list.push(m.folder);
+    return list;
+  }
+  function addFolder(name) { const list = ls.get(FK.list, []) || []; if (!list.includes(name)) { list.push(name); ls.set(FK.list, list); } }
+  async function notesIn(f) { return (await DB.all('meta').catch(() => [])).filter(m => m.kind === 'note' && (m.folder || '') === f); }
+  async function renameFolder(old, name) {
+    if (!old || old === name) return;
+    const prev = ls.get(FK.list, []) || [], i = prev.indexOf(old);
+    const list = prev.filter(f => f !== old && f !== name);
+    list.splice(i < 0 ? list.length : Math.min(i, list.length), 0, name);
+    ls.set(FK.list, list);
+    for (const m of await notesIn(old)) { m.folder = name; await DB.put('meta', m); }
+    ls.set(FK.sel, name);
+  }
+  async function deleteFolder(f) {
+    if (!f) return;
+    ls.set(FK.list, (ls.get(FK.list, []) || []).filter(x => x !== f));
+    for (const m of await notesIn(f)) { m.folder = ''; await DB.put('meta', m); }
+    ls.set(FK.sel, '');
+  }
+  // 이름 하나 묻기 (새 폴더 · 폴더 이름 바꾸기)
+  function folderPrompt(title, value, ok) {
+    showModal(`
+      <h2>${esc(title)}</h2>
+      <label for="fd-name">폴더 이름</label><input id="fd-name" maxlength="20" value="${esc(value)}" placeholder="예: 수학 1단원, 영어 단어">
+      <p class="msg" id="fd-msg" role="status"></p>
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="ok">확인</button></div>`, async b => {
+      if (b.dataset.m !== 'ok') return;
+      const name = cleanName($('#fd-name').value, 20), msg = $('#fd-msg');
+      if (!name) { msg.className = 'msg err'; msg.textContent = '폴더 이름을 적어 주세요.'; return; }
+      closeModal(); await ok(name);
+    });
+    setTimeout(() => { const i = $('#fd-name'); if (i) i.focus(); }, 50);
+  }
+  const folderPick = (folders, cur) => `<div class="grid-btns pick-fd">
+      <button class="btn ghost" type="button" data-m="fd" data-v="" aria-pressed="${!cur}">폴더 없음</button>
+      ${folders.map(f => `<button class="btn ghost" type="button" data-m="fd" data-v="${esc(f)}" aria-pressed="${f === cur}">${esc(f)}</button>`).join('')}
+    </div>`;
+  const pressOne = b => b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  const pressed = sel => { const b = $('#modal-card').querySelector(sel + ' [aria-pressed="true"]'); return b ? b.dataset.v : ''; };
+  async function newNote() {
+    const metas = await DB.all('meta').catch(() => []), folders = folderList(metas);
+    const cur = ls.get(FK.sel, ''), today = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' }).format(new Date());
+    showModal(`
+      <h2>새 노트</h2>
+      <label for="nn-name">이름</label><input id="nn-name" maxlength="40" value="${esc('노트 ' + today)}">
+      <p class="mh">첫 쪽 모양 <small>쓰다가 [더보기 → 빈 쪽 넣기]로 쪽을 더 넣을 수 있어요</small></p>
+      <div class="grid-btns pick-pat">${NOTE_PATS.map((k, i) => `<button class="btn ghost" type="button" data-m="pat" data-v="${k}" aria-pressed="${i === 0}">${PATTERN[k]}</button>`).join('')}</div>
+      ${folders.length ? `<p class="mh">폴더</p>${folderPick(folders, folders.includes(cur) ? cur : '')}` : ''}
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="make">만들기</button></div>`, async b => {
+      if (b.dataset.m === 'pat' || b.dataset.m === 'fd') { pressOne(b); return; }
+      if (b.dataset.m !== 'make' || b.disabled) return;
+      b.disabled = true;
+      const name = cleanName($('#nn-name').value, 40) || '노트 ' + today;
+      const pat = pressed('.pick-pat') || 'lines', folder = pressed('.pick-fd');
+      const id = 'note:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      try {
+        await DB.put('meta', { id, kind: 'note', name, folder, added: Date.now() });
+        await DB.put('ink', { id, pages: {}, order: [{ b: pat, w: A4.w, h: A4.h }], updated: Date.now() });
+      } catch (e) { b.disabled = false; toast('노트를 만들지 못했어요. 저장 공간을 확인해 주세요.', 4000); return; }
+      closeModal(); openDoc(id);
+    });
+  }
+  // 노트 정리: 이름 바꾸기 · 폴더 옮기기
+  async function editNote(id) {
+    const metas = await DB.all('meta').catch(() => []), m = metas.find(x => x.id === id); if (!m) return;
+    const folders = folderList(metas);
+    showModal(`
+      <h2>노트 정리</h2>
+      <label for="ne-name">이름</label><input id="ne-name" maxlength="40" value="${esc(m.name)}">
+      <p class="mh">폴더 ${folders.length ? '' : '<small>첫 화면의 [+ 폴더]로 폴더를 만들 수 있어요</small>'}</p>
+      ${folderPick(folders, m.folder || '')}
+      <div class="row"><button class="btn ghost" type="button" data-m="close">닫기</button><button class="btn" type="button" data-m="save">저장</button></div>`, async b => {
+      if (b.dataset.m === 'fd') { pressOne(b); return; }
+      if (b.dataset.m !== 'save') return;
+      m.name = cleanName($('#ne-name').value, 40) || m.name; m.folder = pressed('.pick-fd');
+      await DB.put('meta', m).catch(() => {});
+      closeModal(); toast(m.folder ? `‘${m.folder}’ 폴더에 두었어요.` : '저장했어요.'); renderHome();
+    });
+  }
   async function renderHome() {
     S.view = 'home';
     const metas = (await DB.all('meta').catch(() => [])).sort((a, b) => (b.opened || 0) - (a.opened || 0));
@@ -283,28 +375,44 @@
       return `<div class="item"><button class="main" type="button" data-sheet="${esc(s.id)}"><span class="name">${esc(s.title || s.id)}</span>
         <span class="sub">${sub}</span></button>${state}</div>`;
     }).join('');
-    const row = m => {
+    const row = (m, extra = '', pre = '') => {
       const gone = m.noPdf ? '<span class="due late">PDF 파일 없음 · 같은 PDF를 다시 열면 필기가 이어져요</span> · ' : '';
       const state = m.kind === 'grade' && m.sentAt ? `<span class="state sent">돌려줌 ${fmtDate(m.sentAt)}</span>` : '';
       const score = m.kind === 'grade' && m.score ? `<b class="score">${m.score.r}/${m.score.t}</b> · ` : '';
       const clips = m.kind === 'wrong' && m.clips ? `문제 ${m.clips}개 · ` : '';
       return `<div class="item"><button class="main" type="button" data-open="${esc(m.id)}"><span class="name">${esc(m.name)}</span>
-      <span class="sub">${gone}${score}${clips}${m.pages ? m.pages + '쪽 · ' : ''}${m.inkCount ? '필기 있음 · ' : ''}${fmtDate(m.opened || m.added)}</span></button>${state}
+      <span class="sub">${pre}${gone}${score}${clips}${m.pages ? m.pages + '쪽 · ' : ''}${m.inkCount ? '필기 있음 · ' : ''}${fmtDate(m.opened || m.added)}</span></button>${state}${extra}
       <button class="del${delArmed === m.id ? ' armed' : ''}" type="button" data-del="${esc(m.id)}">${delArmed === m.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`;
     };
-    const fileRows = metas.filter(m => m.kind === 'file').map(row).join('');
-    const gradeRows = metas.filter(m => m.kind === 'grade').map(row).join('');
-    const wrongRow = metas.filter(m => m.kind === 'wrong').map(row).join('');
+    const fileRows = metas.filter(m => m.kind === 'file').map(m => row(m)).join('');
+    const gradeRows = metas.filter(m => m.kind === 'grade').map(m => row(m)).join('');
+    const wrongRow = metas.filter(m => m.kind === 'wrong').map(m => row(m)).join('');
+    // 내 노트 (폴더로 나눠 봄)
+    const notes = metas.filter(m => m.kind === 'note'), folders = folderList(metas);
+    let fsel = ls.get(FK.sel, '');
+    if (typeof fsel !== 'string' || (fsel && !folders.includes(fsel))) fsel = '';
+    const inF = f => notes.filter(m => (m.folder || '') === f).length;
+    const shown = fsel ? notes.filter(m => m.folder === fsel) : notes;
+    const noteRows = shown.map(m => row(m, `<button class="del" type="button" data-nedit="${esc(m.id)}">정리</button>`, !fsel && m.folder ? `<span class="fname">${esc(m.folder)}</span> · ` : '')).join('');
+    const folderBar = `<div class="folders" role="group" aria-label="노트 폴더">
+        <button class="fchip" type="button" data-folder="" aria-pressed="${!fsel}">전체 <span class="n">${notes.length}</span></button>
+        ${folders.map(f => `<button class="fchip" type="button" data-folder="${esc(f)}" aria-pressed="${f === fsel}">${FOLDER_IC}${esc(f)} <span class="n">${inF(f)}</span></button>`).join('')}
+        <button class="fchip add" type="button" data-a="new-folder">+ 폴더</button>
+      </div>
+      ${fsel ? `<div class="fbar"><span class="fb-name">${FOLDER_IC}${esc(fsel)}</span><button class="del" type="button" data-a="ren-folder">이름 바꾸기</button><button class="del${folderDelArmed ? ' armed' : ''}" type="button" data-a="del-folder">${folderDelArmed ? '한 번 더 누르면 폴더를 지워요 (노트는 남아요)' : '폴더 지우기'}</button></div>` : ''}`;
     const emptyArt = CFG.art ? `<img class="empty-art" src="${CFG.art}" alt="" draggable="false">` : '';   // 비어 있을 때 흐릿한 그림
     hideSplash();
     home.innerHTML = `
       <header>
         <div class="titlerow">${CFG.art ? `<img class="logo-art" src="${CFG.art}" alt="" draggable="false">` : ''}<h1>${esc(CFG.title || '이레 노트')}</h1></div>
-        <p class="lead">PDF를 열어 그 위에 펜으로 쓰고 그려요. 쓴 내용은 이 기기에 저장돼서 다시 열면 그대로 있어요.</p>
+        <p class="lead">PDF를 열거나 새 노트를 만들어 펜으로 쓰고 그려요. 쓴 내용은 이 기기에 저장돼서 다시 열면 그대로 있어요.</p>
       </header>
       ${SHEETS.length || CFG.alwaysSheets ? `<h2>선생님 학습지</h2><div class="list">${sheetRows || `<p class="empty">${emptyArt}아직 올라온 학습지가 없어요.</p>`}</div>` : ''}
       <h2>내 PDF <button class="btn" type="button" data-a="pick">PDF 열기</button></h2>
       <div class="list">${fileRows || `<p class="empty">${emptyArt}아직 연 PDF가 없어요. [PDF 열기]로 휴대폰·태블릿에 있는 PDF를 골라 보세요.<br>PDF는 인터넷에 올라가지 않고 이 기기 안에서만 열려요.</p>`}</div>
+      <h2>내 노트 <button class="btn" type="button" data-a="new-note">새 노트</button></h2>
+      ${notes.length || folders.length ? folderBar : ''}
+      <div class="list" id="note-list">${noteRows || `<p class="empty">${emptyArt}${fsel ? `‘${esc(fsel)}’ 폴더가 비어 있어요. [새 노트]를 누르거나, 다른 노트의 [정리]에서 이 폴더로 옮겨요.` : 'PDF 없이 빈 쪽에 바로 써요. [새 노트]로 줄 노트·모눈·칠판 같은 쪽을 골라 시작하고, 폴더로 나눠 둘 수 있어요.'}</p>`}</div>
       <h2>오답 노트</h2>
       <div class="list">${wrongRow || `<p class="empty">${emptyArt}학습지·PDF를 보다가 [더보기 → 오답 노트에 담기]를 누르고 틀린 문제를 상자로 두르면 여기에 모여요. 빈 곳에 다시 풀어 볼 수 있어요.</p>`}</div>
       <h2>학생 PDF 채점 <span class="h2-btns"><button class="btn ghost" type="button" data-a="grades">채점 기록</button><button class="btn ghost" type="button" data-a="pick-grade">학생 PDF 열기</button></span></h2>
@@ -321,6 +429,15 @@
   home.addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.a === 'pick') { pickKind = 'file'; $('#file-in').click(); return; }
+    if (b.dataset.a === 'new-note') { newNote(); return; }
+    if (b.dataset.a === 'new-folder') { folderPrompt('새 폴더', '', async name => { addFolder(name); ls.set(FK.sel, name); renderHome(); }); return; }
+    if (b.dataset.a === 'ren-folder') { const old = ls.get(FK.sel, ''); folderPrompt('폴더 이름 바꾸기', old, async name => { await renameFolder(old, name); renderHome(); }); return; }
+    if (b.dataset.a === 'del-folder') {
+      if (!folderDelArmed) { folderDelArmed = true; renderHome(); return; }
+      folderDelArmed = false; await deleteFolder(ls.get(FK.sel, '')); toast('폴더를 지웠어요. 안에 있던 노트는 ‘전체’에 남아 있어요.', 3600); renderHome(); return;
+    }
+    if (b.dataset.folder !== undefined) { folderDelArmed = false; ls.set(FK.sel, b.dataset.folder); renderHome(); return; }
+    if (b.dataset.nedit) { editNote(b.dataset.nedit); return; }
     if (b.dataset.a === 'pick-grade') { pickKind = 'grade'; $('#file-in').click(); return; }
     if (b.dataset.a === 'backup') { openBackup(); return; }
     if (b.dataset.a === 'grades') { openGrades(); return; }
@@ -382,7 +499,7 @@
   async function openDoc(id) {
     const token = ++loadToken;
     const [meta, pdfRec, inkRec] = await Promise.all([DB.get('meta', id), DB.get('pdf', id), DB.get('ink', id)].map(p => p.catch(() => null)));
-    const bare = !!(meta && meta.kind === 'wrong');   // 오답 노트: PDF 없이 넣은 쪽만
+    const bare = isBare(meta);   // 오답 노트·내 노트: PDF 없이 넣은 쪽만
     if (meta && !pdfRec && meta.noPdf && !bare) { toast('이 기기에 PDF 파일이 없어요. [PDF 열기]로 같은 PDF를 고르면 필기가 이어져요.', 5000); return; }
     if (!meta || (!pdfRec && !bare)) { toast('파일을 찾지 못했어요.'); return; }
     let pdf = null;
@@ -3617,7 +3734,7 @@
           docs.push(d);
         }
         const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-        const file = new File([JSON.stringify({ app: 'yireh-note', v: 1, at: Date.now(), docs })], `이레노트-백업-${today}.json`, { type: 'application/json' });
+        const file = new File([JSON.stringify({ app: 'yireh-note', v: 1, at: Date.now(), docs, folders: ls.get(FK.list, []) || [] })], `이레노트-백업-${today}.json`, { type: 'application/json' });
         download(file);
         msg.textContent = `‘${file.name}’(${fmtSize(file.size)})로 저장했어요. 아이패드는 ‘파일’ 앱의 다운로드 폴더에 있어요.`;
       } catch (e) { msg.className = 'msg err'; msg.textContent = '백업 파일을 만들지 못했어요. 저장 공간을 확인해 주세요.'; }
@@ -3630,7 +3747,7 @@
     let data;
     try { data = JSON.parse(await f.text()); } catch (err) { data = null; }
     if (!data || data.app !== 'yireh-note' || !Array.isArray(data.docs)) { toast('이레 노트 백업 파일이 아니에요.', 3600); return; }
-    const docs = data.docs.filter(d => d && d.meta && typeof d.meta.id === 'string' && /^(sheet|file|grade|wrong):/.test(d.meta.id));
+    const docs = data.docs.filter(d => d && d.meta && typeof d.meta.id === 'string' && /^(sheet|file|grade|wrong|note):/.test(d.meta.id));
     const metas = await DB.all('meta').catch(() => []), have = new Set(metas.map(m => m.id));
     const over = docs.filter(d => have.has(d.meta.id)).length;
     showModal(`
@@ -3646,16 +3763,17 @@
         for (const d of docs) {
           const m = Object.assign({}, d.meta);
           if (d.pdf) { await DB.put('pdf', { id: m.id, data: await fromB64(d.pdf) }); delete m.noPdf; }
-          else if (m.kind !== 'sheet' && m.kind !== 'wrong') { if (!(await DB.get('pdf', m.id).catch(() => null))) m.noPdf = true; else delete m.noPdf; }
+          else if (m.kind !== 'sheet' && !isBare(m)) { if (!(await DB.get('pdf', m.id).catch(() => null))) m.noPdf = true; else delete m.noPdf; }
           await DB.put('meta', m);
           if (d.ink && d.ink.pages) await DB.put('ink', Object.assign({}, d.ink, { id: m.id }));
         }
+        if (Array.isArray(data.folders)) for (const f of data.folders) { const n = cleanName(f, 20); if (n) addFolder(n); }
         closeModal(); toast(`문서 ${docs.length}개를 불러왔어요.`, 3600); renderHome();
       } catch (err) { msg.className = 'msg err'; msg.textContent = '불러오지 못했어요. 저장 공간을 확인해 주세요.'; b.disabled = false; }
     });
   });
 
   // 점검용
-  window.NOTE_DEBUG = { S, DB, ptrs, paintItem, smoothFit, goPage, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
+  window.NOTE_DEBUG = { S, DB, folderList, renameFolder, deleteFolder, ptrs, paintItem, smoothFit, goPage, Q, exportPdf, flushInk, openDoc, openSheet, layout, updateVisible, recognize, FX, T, G, curtains, patternSpec, placePhoto, addToWrong, countStamps, get SEL() { return SEL; }, get RP() { return RP; } };
   renderHome();
 })();
